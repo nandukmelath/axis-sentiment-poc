@@ -13,6 +13,7 @@ import plotly.express as px
 import streamlit as st
 
 import db
+import panels
 from config import BRAND
 
 st.set_page_config(page_title=f"{BRAND} — Live Sentiment War-Room", layout="wide",
@@ -39,8 +40,10 @@ st.markdown("""
 
 
 def fresh():
-    a = db.df("""SELECT a.*, r.text, r.url, r.source, r.author, r.created_at, r.engagement
-                 FROM analysis a JOIN raw_posts r ON a.source_id = r.source_id""")
+    a = db.df("""SELECT a.*, r.text, r.url, r.source, r.author, r.created_at, r.engagement,
+                        COALESCE(cp.lang, r.lang, 'en') AS lang
+                 FROM analysis a JOIN raw_posts r ON a.source_id = r.source_id
+                 LEFT JOIN clean_posts cp ON a.source_id = cp.source_id""")
     c = db.df("SELECT * FROM clusters ORDER BY size DESC")
     if not a.empty:
         a["created_dt"] = pd.to_datetime(a["created_at"], errors="coerce", utc=True)
@@ -55,6 +58,7 @@ def apply_filters(a):
     if ss.get("f_sent"): fa = fa[fa["sentiment"].isin(ss["f_sent"])]
     if ss.get("f_urg"):  fa = fa[fa["urgency"].isin(ss["f_urg"])]
     if ss.get("f_team"): fa = fa[fa["recommended_team"].isin(ss["f_team"])]
+    if ss.get("f_lang") and "lang" in fa: fa = fa[fa["lang"].isin(ss["f_lang"])]
     if ss.get("f_q"):    fa = fa[fa["text"].str.contains(ss["f_q"], case=False, na=False)]
     if ss.get("f_flags"): fa = fa[(fa["fraud_signal"] == 1) | (fa["churn_risk"] == 1)]
     return fa
@@ -76,13 +80,23 @@ def explode_aspects(a):
 st.title(f"🏦 {BRAND} — Live Sentiment War-Room")
 st.caption("Real-time customer voice across social media · AI sentiment by Gemini · in-house / DPDP-friendly")
 
-# ---------------- sidebar filters (keyed; read inside fragments) ----------------
+# ---------------- sidebar: role selector + filters ----------------
 _a0, _ = fresh()
+ROLE_TABS = {
+    "Exec": ["🛰️ War-Room", "🏁 Competitor SOV", "📦 Products", "📈 Trends", "🗞️ Digest"],
+    "RM": ["👤 RM Cockpit", "👥 Customer 360", "✍️ Drafts"],
+    "Ops": ["🛠️ Admin", "🧭 Team Queues", "🛡️ Fraud", "🔔 Alerts", "✍️ Drafts"],
+    "Analyst": ["📈 Trends", "🗺️ Geo", "📢 Influencers", "🔬 Root-cause", "🗣️ Languages", "📦 Products"],
+    "Admin (all)": None,   # all tabs
+}
+st.sidebar.header("View")
+role = st.sidebar.selectbox("Role", list(ROLE_TABS), key="role")
 st.sidebar.header("Filters")
 st.sidebar.multiselect("Source", sorted(_a0["source"].dropna().unique()) if not _a0.empty else [], key="f_src")
 st.sidebar.multiselect("Sentiment", ["negative", "mixed", "neutral", "positive"], key="f_sent")
 st.sidebar.multiselect("Urgency", ["critical", "high", "medium", "low"], key="f_urg")
 st.sidebar.multiselect("Team", sorted(_a0["recommended_team"].dropna().unique()) if not _a0.empty else [], key="f_team")
+st.sidebar.multiselect("Language", ["en", "hi", "hi-en"], key="f_lang")
 st.sidebar.text_input("Search text", key="f_q")
 st.sidebar.checkbox("Only fraud / churn flagged", key="f_flags")
 st.sidebar.divider()
@@ -296,12 +310,33 @@ def admin_analytics():
                           "resp (min)", "recovery"]], width="stretch", hide_index=True)
 
 
-# ---------------- tabs ----------------
-tab1, tab2, tab3 = st.tabs(["🛰️ War-Room", "👤 RM Cockpit", "🛠️ Admin Analytics"])
-with tab1:
+# ---------------- role-driven tabs ----------------
+def war_room():
     live_strip()
     analytics()
-with tab2:
-    rm_cockpit()
-with tab3:
-    admin_analytics()
+
+
+TAB_FUNCS = {
+    "🛰️ War-Room": war_room,
+    "👤 RM Cockpit": rm_cockpit,
+    "🛠️ Admin": admin_analytics,
+    "🏁 Competitor SOV": panels.competitor_sov,
+    "📦 Products": panels.product_scorecards,
+    "📈 Trends": panels.trends_panel,
+    "🗺️ Geo": panels.geo_panel,
+    "📢 Influencers": panels.influencers_panel,
+    "🧭 Team Queues": panels.team_queues,
+    "🛡️ Fraud": panels.fraud_board,
+    "🔔 Alerts": panels.alerts_panel,
+    "✍️ Drafts": panels.response_drafts,
+    "🗞️ Digest": panels.weekly_digest_panel,
+    "🔬 Root-cause": panels.root_cause_panel,
+    "👥 Customer 360": panels.customer_360,
+    "🗣️ Languages": panels.language_panel,
+    "🔐 Audit": panels.audit_panel,
+}
+
+_names = ROLE_TABS.get(role) or list(TAB_FUNCS.keys())
+for _t, _nm in zip(st.tabs(_names), _names):
+    with _t:
+        TAB_FUNCS[_nm]()

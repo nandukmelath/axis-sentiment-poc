@@ -27,7 +27,12 @@ def fresh_db():
         for t in ["raw_posts", "analysis", "clusters", "clean_posts", "dim_author", "dim_customer",
                   "dim_rm", "dim_product", "bridge_handle_customer", "fact_mention",
                   "fact_aspect_sentiment", "fact_interaction", "mart_rm_enablement",
-                  "mart_admin_analytics", "mart_kpis"]:
+                  "mart_admin_analytics", "mart_kpis",
+                  "mart_product_scorecard", "mart_influencers", "mart_team_queue", "mart_fraud",
+                  "mart_trends", "mart_geo", "mart_competitor_sov", "competitor_posts",
+                  "reply_drafts", "alerts", "audit_log"]:
             c.execute(text(f"DROP TABLE IF EXISTS {t}"))
     build.ensure_tables()
+    from analytics import features
+    features.ensure_tables()
     return db
