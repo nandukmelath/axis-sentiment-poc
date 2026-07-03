@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+axis.db
+.git/
+.env
+exec_summary.md
+fetch/x_state.json

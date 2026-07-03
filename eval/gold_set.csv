@@ -1,0 +1,19 @@
+source_id,text,gold_sentiment,gold_urgency,gold_intent
+g1,"Axis Bank UPI not working since morning, payment failed but money debited! Fix this ASAP",negative,critical,complaint
+g2,"Loving the new Axis Mobile app update, so much faster now",positive,low,praise
+g3,"Wah Axis, another hidden charge on my account, thank you so much","negative",medium,complaint
+g4,"Anyone know the Axis Bank customer care number for credit card?",neutral,low,query
+g5,"Closing my Axis salary account this week, worst service ever",negative,high,churn_threat
+g6,"Got a call claiming to be Axis Bank asking for my OTP, is this a scam?",negative,critical,fraud_report
+g7,"Axis Bank net banking down again, cannot login for 2 hours",negative,high,complaint
+g8,"Axis Magnus credit card lounge access is amazing, totally worth it",positive,low,praise
+g9,"Filing a complaint with the RBI ombudsman against Axis for wrong charges",negative,critical,legal_threat
+g10,"Axis Bank branch staff at Koramangala were very helpful today",positive,low,praise
+g11,"3 din ho gaye, Axis se refund nahi aaya, bakwaas service",negative,high,complaint
+g12,"Journalist here doing a story on Axis Bank UPI outages, anyone affected please DM",negative,high,journalist_or_influencer
+g13,"Axis credit card annual fee charged despite lifetime free promise, totally cheated",negative,high,complaint
+g14,"Is Axis Bank open on Saturday?",neutral,low,query
+g15,"My Axis debit card got blocked randomly, stuck at an ATM with no cash",negative,critical,complaint
+g16,"Axis Bank FD interest rate is decent compared to other banks",neutral,low,other
+g17,"Fake Axis Bank support account on twitter DMed me a link, beware everyone",negative,critical,fraud_report
+g18,"Thanks Axis for the quick loan disbursal, smooth process",positive,low,praise

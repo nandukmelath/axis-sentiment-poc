@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>axis_sentiment_pipeline · Graph</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#151c2c; --line:#26314a; --ink:#e7edf7; --mut:#8fa0bd;
+    --ok:#2e8b57; --ok-bg:#12251c; --skip:#7d8798; --skip-bg:#1b2233;
+    --accent:#0fb5a4; --accent-bg:#0c2a29; --beam:#6aa0ff; --beam-bg:#0f1e3a;
+    --edge:#4a5a7e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+  .top{display:flex;align-items:center;gap:16px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--accent)}
+  .top h1{font-size:15px;margin:0;font-weight:700}
+  .tabs{display:flex;gap:4px;margin-left:10px}
+  .tab{font-size:12.5px;color:var(--mut);padding:5px 12px;border-radius:6px}
+  .tab.on{color:var(--accent);background:#0c2a29;font-weight:700}
+  .runbar{margin-left:auto;font-size:12px;color:var(--mut)}
+  .runbar b{color:var(--ink)}
+  .wrap{display:flex;height:calc(100vh - 52px)}
+  .canvas{flex:1;overflow:auto;padding:10px 14px}
+  .side{width:320px;border-left:1px solid var(--line);background:var(--panel);padding:16px 18px;overflow:auto;flex:none}
+  .side h2{font-size:14px;margin:0 0 2px}
+  .pill{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:20px;margin:6px 8px 6px 0;font-weight:700}
+  .pill.ok{background:var(--ok-bg);color:#6ee7a8;border:1px solid #245c3d}
+  .pill.skip{background:var(--skip-bg);color:#b7c2d6;border:1px solid #3a465f}
+  .kv{font-size:12px;color:var(--mut);margin-top:12px}
+  .kv b{color:var(--ink);font-weight:600}
+  .cmd{display:block;background:#0b101b;border:1px solid var(--line);border-radius:7px;padding:9px 11px;margin-top:6px;
+       font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:#a9d6ff;white-space:pre-wrap;word-break:break-word}
+  .legend{font-size:11px;color:var(--mut);padding:6px 18px;border-top:1px solid var(--line);background:var(--panel);display:flex;gap:18px;flex-wrap:wrap}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+  .node{cursor:pointer}
+  .node:hover .nbox{stroke:var(--accent);stroke-width:2}
+  .hint{font-size:12px;color:var(--mut);line-height:1.5}
+  text{user-select:none}
+</style>
+</head>
+<body>
+  <div class="top">
+    <span class="dot"></span>
+    <h1>axis_sentiment_pipeline</h1>
+    <div class="tabs"><span class="tab on">Graph</span><span class="tab">Grid</span><span class="tab">Code</span></div>
+    <div class="runbar">last run <b>2026-07-03</b> · <b>16</b> tasks · <b style="color:#6ee7a8">success</b> · schedule: manual</div>
+  </div>
+
+  <div class="wrap">
+    <div class="canvas">
+      <svg id="dag" viewBox="0 0 1320 560" width="1320" height="560" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#4a5a7e"/></marker>
+          <marker id="ara" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#0fb5a4"/></marker>
+        </defs>
+
+        <!-- edges -->
+        <path d="M254,300 C270,300 272,310 286,310" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+        <path d="M412,310 C440,310 440,200 468,198" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+        <path d="M672,366 C712,366 712,200 748,198" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+        <path d="M672,370 C712,370 716,354 748,354" fill="none" stroke="#0fb5a4" stroke-width="1.8" marker-end="url(#ara)"/>
+
+        <!-- ingest group -->
+        <rect x="40" y="60" width="214" height="470" rx="11" fill="#141b2b" stroke="#3a465f" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <text x="54" y="84" fill="#e7edf7" font-size="14" font-weight="700">ingest</text>
+        <text x="54" y="98" fill="#8fa0bd" font-size="10.5">7 parallel scrapers → raw_posts</text>
+
+        <!-- enrich group -->
+        <rect x="452" y="136" width="236" height="290" rx="11" fill="#141b2b" stroke="#3a465f" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <text x="466" y="160" fill="#e7edf7" font-size="14" font-weight="700">enrich</text>
+        <text x="466" y="174" fill="#8fa0bd" font-size="10.5">baseline → LLM depth → cluster</text>
+        <path d="M570,222 L570,254" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+        <path d="M570,306 L570,338" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+
+        <!-- warehouse group -->
+        <rect x="736" y="284" width="548" height="150" rx="11" fill="#141b2b" stroke="#3a465f" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <text x="750" y="308" fill="#e7edf7" font-size="14" font-weight="700">warehouse</text>
+        <text x="750" y="322" fill="#8fa0bd" font-size="10.5">gold: SCD2 dims → facts → resolution → marts</text>
+        <path d="M876,354 L882,354" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+        <path d="M1008,354 L1014,354" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+        <path d="M1140,354 L1146,354" fill="none" stroke="#4a5a7e" stroke-width="1.6" marker-end="url(#ar)"/>
+
+        <g id="g-nodes"></g>
+      </svg>
+    </div>
+
+    <div class="side" id="side"></div>
+  </div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:#12251c;border:1px solid #2e8b57"></span>success</span>
+    <span><span class="sw" style="background:#1b2233;border:1px solid #3a465f"></span>skipped (no key / offline)</span>
+    <span><span class="sw" style="background:#0f1e3a;border:1px solid #6aa0ff"></span>Apache Beam</span>
+    <span><span class="sw" style="background:#0c2a29;border:1px solid #0fb5a4"></span>LLM / metric</span>
+    <span style="margin-left:auto">dashed box = TaskGroup · → dependency</span>
+  </div>
+
+<script>
+const T = {
+  scrape_news:      {g:"ingest", x:58,y:112, w:178,h:38, st:"ok",   cmd:"python -m fetch.run_fetch --only news",         d:"Google News RSS → raw_posts.", r:"25 posts"},
+  scrape_play:      {g:"ingest", x:58,y:158, w:178,h:38, st:"ok",   cmd:"python -m fetch.run_fetch --only play",         d:"Google Play reviews → raw_posts.", r:"40 reviews"},
+  scrape_appstore:  {g:"ingest", x:58,y:204, w:178,h:38, st:"skip", cmd:"python -m fetch.run_fetch --only appstore",     d:"Apple App Store reviews.", r:"skipped — set APPSTORE_APP_ID"},
+  scrape_reddit:    {g:"ingest", x:58,y:250, w:178,h:38, st:"skip", cmd:"python -m fetch.run_fetch --only reddit",       d:"Reddit India-finance subs (posts + comments).", r:"skipped — set REDDIT_CLIENT_ID/SECRET"},
+  scrape_youtube:   {g:"ingest", x:58,y:296, w:178,h:38, st:"skip", cmd:"python -m fetch.run_fetch --only youtube",      d:"YouTube comments.", r:"skipped — set YOUTUBE_API_KEY"},
+  scrape_scrapebadger:{g:"ingest",x:58,y:342,w:178,h:38, st:"skip", cmd:"python -m fetch.run_fetch --only scrapebadger", d:"X/Twitter via ScrapeBadger API (primary).", r:"skipped — set SCRAPEBADGER_API_KEY"},
+  scrape_twitter:   {g:"ingest", x:58,y:388, w:178,h:38, st:"ok",   cmd:"python -m fetch.run_fetch --only twitter",      d:"X/Twitter via CSV import (fallback).", r:"3 imported"},
+
+  transform:        {g:"transform", x:286,y:280, w:126,h:60, st:"beam", cmd:"python -m transform.beam_transform",
+                     d:"Apache Beam (DirectRunner, keyless): normalise text, dedup by hash, language-detect (en/hi/hi-en), spam heuristics, PII mask. DataflowRunner for cloud scale — same code.",
+                     r:"1023 in · 40 dup · 9 spam · 68 PII · en 953/hi 57/hi-en 13", sub:"Beam · dedup+lang+spam"},
+
+  vader_baseline:   {g:"enrich", x:468,y:184, w:204,h:44, st:"ok",   cmd:"python -m analyze.run_analyze --phase baseline", d:"VADER sentiment for every new post + PII mask. Free, always runs.", r:"1023 rows scored"},
+  llm_classify:     {g:"enrich", x:468,y:268, w:204,h:44, st:"skip", cmd:"python -m analyze.run_analyze --phase llm",      d:"LLM decision-grade depth on negatives. Batch-resilient — no key = baseline stands.", r:"skipped — no LLM key", ac:1},
+  cluster:          {g:"enrich", x:468,y:352, w:204,h:44, st:"ok",   cmd:"python -m analyze.embed_cluster",                 d:"Embeddings → issue clusters + emerging-24h alarm.", r:"clustered"},
+
+  exec_brief:       {g:"report", x:748,y:184, w:180,h:44, st:"skip", cmd:"python -m analyze.exec_summary",                  d:"LLM board-ready 'top issues + actions' brief.", r:"skipped — needs LLM key"},
+
+  wh_dims:          {g:"warehouse", x:752,y:334, w:124,h:44, st:"ok", cmd:"python -m warehouse.build --step dims",       d:"SCD Type 2 author dimension — versioned history per @handle.", r:"598 handles, 3 versions"},
+  wh_facts:         {g:"warehouse", x:884,y:334, w:124,h:44, st:"ok", cmd:"python -m warehouse.build --step facts",      d:"fact_mention + fact_aspect_sentiment (customer voice only).", r:"1008 mentions"},
+  wh_resolution:    {g:"warehouse", x:1016,y:334,w:124,h:44, st:"ok", cmd:"python -m warehouse.build --step resolution", d:"fact_interaction — bank reply → resolved? satisfied? recovery.", r:"557 threads, 4 resolved"},
+  wh_marts:         {g:"warehouse", x:1148,y:334,w:124,h:44, st:"ok", cmd:"python -m warehouse.build --step marts",      d:"RM cockpit + admin marts + Sentiment Recovery Rate.", r:"6 RM · 16 admin · recovery 25%", ac:1},
+};
+
+const NS="http://www.w3.org/2000/svg";
+const COL={ok:{bg:"#12251c",br:"#2e8b57",tx:"#dff5e8",st:"#2e8b57"},
+           skip:{bg:"#1b2233",br:"#455169",tx:"#c3cddf",st:"#455169"},
+           beam:{bg:"#0f1e3a",br:"#6aa0ff",tx:"#dbe7ff",st:"#6aa0ff"}};
+const g=document.getElementById("g-nodes");
+for(const id in T){
+  const t=T[id], c=COL[t.st];
+  const grp=document.createElementNS(NS,"g"); grp.setAttribute("class","node");
+  grp.addEventListener("click",()=>sel(id));
+  const rect=document.createElementNS(NS,"rect");
+  rect.setAttribute("class","nbox");
+  rect.setAttribute("x",t.x); rect.setAttribute("y",t.y); rect.setAttribute("width",t.w); rect.setAttribute("height",t.h);
+  rect.setAttribute("rx",7); rect.setAttribute("fill",c.bg);
+  rect.setAttribute("stroke", t.ac?"#0fb5a4":c.br); rect.setAttribute("stroke-width", t.ac?1.9:1.4);
+  grp.appendChild(rect);
+  const stripe=document.createElementNS(NS,"rect");
+  stripe.setAttribute("x",t.x); stripe.setAttribute("y",t.y); stripe.setAttribute("width",5); stripe.setAttribute("height",t.h);
+  stripe.setAttribute("rx",2); stripe.setAttribute("fill",c.st);
+  grp.appendChild(stripe);
+  const tx=document.createElementNS(NS,"text");
+  tx.setAttribute("x",t.x+15); tx.setAttribute("y",t.y+(t.h>40?25:24)); tx.setAttribute("fill",c.tx);
+  tx.setAttribute("font-size","12.5"); tx.setAttribute("font-weight","600"); tx.textContent=id;
+  grp.appendChild(tx);
+  if(t.h>40){ const sub=document.createElementNS(NS,"text");
+    sub.setAttribute("x",t.x+15); sub.setAttribute("y",t.y+40); sub.setAttribute("fill","#8fa0bd"); sub.setAttribute("font-size","9.5");
+    let s = t.sub || t.r; sub.textContent = s.length>26 ? s.slice(0,25)+"…" : s; grp.appendChild(sub);
+  }
+  g.appendChild(grp);
+}
+
+function sel(id){
+  const t=T[id];
+  const stClass = t.st==="skip"?"skip":"ok";
+  const stTxt = t.st==="skip"?"skipped":(t.st==="beam"?"success (Beam)":"success");
+  document.getElementById("side").innerHTML =
+    `<h2>${id}</h2>
+     <span class="pill ${stClass}">${stTxt}</span>
+     <span class="pill skip">${t.st==="beam"?"Beam / BashOperator":"BashOperator"}</span>
+     <span class="pill skip">group: ${t.g}</span>
+     <div class="kv"><b>What it does</b><br>${t.d}</div>
+     <div class="kv"><b>Command</b><span class="cmd">${t.cmd}</span></div>
+     <div class="kv"><b>Last run result</b><br>${t.r}</div>`;
+}
+sel("transform");
+</script>
+</body>
+</html>

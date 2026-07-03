@@ -1,0 +1,30 @@
+# --- AI sentiment layer (needed now) ---
+google-genai>=1.0.0
+pydantic>=2.6
+pandas>=2.0
+numpy>=1.26
+scikit-learn>=1.3
+python-dotenv>=1.0
+
+# --- fetch layer (Phase 1, not needed to test the LLM layer) ---
+praw>=7.7
+google-play-scraper>=1.2
+feedparser>=6.0
+google-api-python-client>=2.100
+
+# --- dashboard (Phase 4) ---
+streamlit>=1.30
+plotly>=5.18
+
+# --- streaming ingest (Phase 5) ---
+websocket-client>=1.7   # Bluesky Jetstream firehose
+requests>=2.31          # Mastodon streaming
+
+# --- store portability + cascade (Phase 5) ---
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9    # Postgres driver (Docker/prod)
+vaderSentiment>=3.3     # cheap first-pass classifier
+openai>=1.30            # OpenAI-compatible providers (Groq/OpenAI/OpenRouter/DeepSeek/Together/Cerebras)
+
+# --- X.com authenticated crawler (Phase 6) ---
+playwright>=1.40        # after install: python -m playwright install chromium
