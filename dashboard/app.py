@@ -108,6 +108,14 @@ def _run_pipeline(window_label):
 st.title(f"🏦 {BRAND} — Live Sentiment War-Room")
 st.caption("Real-time customer voice across social media · AI sentiment by Gemini · in-house / DPDP-friendly")
 
+# ---------------- RUN bar (main page — always visible) ----------------
+_rb = st.columns([0.22, 0.24, 0.54])
+_rb[0].selectbox("⏱ Time window", ["All time", "1 hour", "1 day", "1 month"], key="t_window",
+                 label_visibility="collapsed")
+if _rb[1].button("▶ Run fetch + refresh", type="primary"):
+    _run_pipeline(st.session_state.get("t_window", "All time"))
+_rb[2].caption("Pick a window → fetches Axis mentions for it → DB → the board reflects that window.")
+
 # ---------------- sidebar: role selector + filters ----------------
 _a0, _ = fresh()
 ROLE_TABS = {
@@ -117,13 +125,6 @@ ROLE_TABS = {
     "Analyst": ["📈 Trends", "🗺️ Geo", "📢 Influencers", "🔬 Root-cause", "🗣️ Languages", "📦 Products"],
     "Admin (all)": None,   # all tabs
 }
-st.sidebar.header("▶ Run")
-st.sidebar.selectbox("Time window", ["All time", "1 hour", "1 day", "1 month"], key="t_window")
-if st.sidebar.button("Run fetch + refresh", type="primary"):
-    _run_pipeline(st.session_state.get("t_window", "All time"))
-st.sidebar.caption("Fetches Axis mentions for the window → DB → the board reflects that window.")
-st.sidebar.divider()
-
 st.sidebar.header("View")
 role = st.sidebar.selectbox("Role", list(ROLE_TABS), key="role")
 st.sidebar.header("Filters")
