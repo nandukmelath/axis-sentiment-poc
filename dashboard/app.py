@@ -61,6 +61,10 @@ def apply_filters(a):
     if ss.get("f_lang") and "lang" in fa: fa = fa[fa["lang"].isin(ss["f_lang"])]
     if ss.get("f_q"):    fa = fa[fa["text"].str.contains(ss["f_q"], case=False, na=False)]
     if ss.get("f_flags"): fa = fa[(fa["fraud_signal"] == 1) | (fa["churn_risk"] == 1)]
+    delta = {"1 hour": datetime.timedelta(hours=1), "1 day": datetime.timedelta(days=1),
+             "1 month": datetime.timedelta(days=30)}.get(ss.get("t_window"))
+    if delta is not None and "created_dt" in fa.columns:
+        fa = fa[fa["created_dt"] >= pd.Timestamp.now(tz="UTC") - delta]
     return fa
 
 
@@ -76,6 +80,30 @@ def explode_aspects(a):
     return pd.DataFrame(rows)
 
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WINDOW_CODE = {"1 hour": "1h", "1 day": "1d", "1 month": "1m"}
+
+
+def _run_pipeline(window_label):
+    """Fetch Axis mentions for the window + refresh everything (runs run_window.py)."""
+    import subprocess
+    code = WINDOW_CODE.get(window_label)
+    args = [sys.executable, "-m", "run_window"] + (["--window", code] if code else [])
+    with st.spinner(f"Fetching Axis mentions ({window_label}) + refreshing the board…"):
+        try:
+            r = subprocess.run(args, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=900)
+            ok, out = r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+        except Exception as e:
+            ok, out = False, str(e)
+    st.cache_data.clear()
+    if ok:
+        line = next((l for l in out.splitlines() if l.startswith("RUN_WINDOW")), "done")
+        st.success(f"Run complete — board refreshed. {line[:200]}")
+    else:
+        st.error(f"Run failed: {out[-400:]}")
+    st.rerun()
+
+
 # ---------------- header ----------------
 st.title(f"🏦 {BRAND} — Live Sentiment War-Room")
 st.caption("Real-time customer voice across social media · AI sentiment by Gemini · in-house / DPDP-friendly")
@@ -89,6 +117,13 @@ ROLE_TABS = {
     "Analyst": ["📈 Trends", "🗺️ Geo", "📢 Influencers", "🔬 Root-cause", "🗣️ Languages", "📦 Products"],
     "Admin (all)": None,   # all tabs
 }
+st.sidebar.header("▶ Run")
+st.sidebar.selectbox("Time window", ["All time", "1 hour", "1 day", "1 month"], key="t_window")
+if st.sidebar.button("Run fetch + refresh", type="primary"):
+    _run_pipeline(st.session_state.get("t_window", "All time"))
+st.sidebar.caption("Fetches Axis mentions for the window → DB → the board reflects that window.")
+st.sidebar.divider()
+
 st.sidebar.header("View")
 role = st.sidebar.selectbox("Role", list(ROLE_TABS), key="role")
 st.sidebar.header("Filters")

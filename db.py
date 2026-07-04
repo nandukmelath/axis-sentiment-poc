@@ -6,13 +6,30 @@ Same function API as before; upserts are dialect-aware.
 """
 import os, json, datetime
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from config import DB_PATH
 
 _default = "sqlite:///" + DB_PATH.replace("\\", "/")
 DB_URL = os.getenv("DATABASE_URL", _default)
-_engine = create_engine(DB_URL, future=True, pool_pre_ping=True)
+# busy_timeout lets a concurrent reader (dashboard) and writer (RUN) coordinate instead of
+# erroring immediately — important when the dashboard is open while a refresh runs.
+_connect_args = {"timeout": 30} if DB_URL.startswith("sqlite") else {}
+_engine = create_engine(DB_URL, future=True, pool_pre_ping=True, connect_args=_connect_args)
 DIALECT = _engine.dialect.name  # 'sqlite' | 'postgresql'
+
+if DIALECT == "sqlite":
+    @event.listens_for(_engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _rec):
+        # busy_timeout makes a concurrent reader (dashboard) and writer (RUN) wait for each
+        # other instead of erroring. NOT WAL: the DB file is shared between Windows/NTFS and
+        # WSL/9p, and 9p can't do WAL's shared-memory — so WAL would break the Airflow side.
+        try:
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA busy_timeout=30000")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.close()
+        except Exception:
+            pass
 
 DDL = [
     """CREATE TABLE IF NOT EXISTS raw_posts (
@@ -97,11 +114,11 @@ FROM raw_posts r LEFT JOIN analysis a ON r.source_id = a.source_id"""
 
 
 def create_view():
-    # one table joining post text + date + author with its sentiment/analysis
+    # one table joining post text + date + author with its sentiment/analysis.
+    # sqlite: CREATE IF NOT EXISTS (no per-run DROP → less write contention with the dashboard).
     with _engine.begin() as c:
         if DIALECT == "sqlite":
-            c.execute(text("DROP VIEW IF EXISTS scored_posts"))
-            c.execute(text(f"CREATE VIEW scored_posts AS {VIEW_SELECT}"))
+            c.execute(text(f"CREATE VIEW IF NOT EXISTS scored_posts AS {VIEW_SELECT}"))
         else:
             c.execute(text(f"CREATE OR REPLACE VIEW scored_posts AS {VIEW_SELECT}"))
 
