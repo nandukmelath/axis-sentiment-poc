@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  - name: axis
+    description: "Silver/gold tables produced by the Python pipeline."
+    tables:
+      - name: analysis
+      - name: raw_posts
+      - name: dim_customer
+
+models:
+  - name: stg_mentions
+    description: "One row per analysed mention (analysis joined to raw_posts)."
+    columns:
+      - name: source_id
+        tests: [not_null, unique]
+      - name: sentiment
+        tests:
+          - accepted_values:
+              values: ['positive', 'negative', 'neutral', 'mixed']
+  - name: mart_sentiment_daily
+    description: "Daily volume + sentiment per RBI category."
+    columns:
+      - name: category
+        tests: [not_null]
+  - name: mart_team_load
+    description: "Open items per owning team."
+    columns:
+      - name: team
+        tests: [not_null, unique]

@@ -107,13 +107,16 @@ with DAG(
     dq_check = BashOperator(task_id="dq_check", bash_command=cmd("warehouse.dq_checks"))
 
     # ---- product feature layer: competitor SOV, analytics marts, replies, alerts, digest ----
-    with TaskGroup(group_id="features", tooltip="competitor SOV · marts · replies · alerts · digest") as features:
+    with TaskGroup(group_id="features", tooltip="SOV · marts · intelligence · replies · alerts · ops") as features:
         f_competitor = BashOperator(task_id="competitor_sov", bash_command=cmd("analytics.competitor"))
         f_marts = BashOperator(task_id="analytics_marts", bash_command=cmd("analytics.features"))
+        f_intel = BashOperator(task_id="intelligence", bash_command=cmd("analytics.intelligence"))
+        f_translate = BashOperator(task_id="translate", bash_command=cmd("analytics.translate"))
         f_respond = BashOperator(task_id="response_drafts", bash_command=cmd("analytics.actions respond"))
         f_alerts = BashOperator(task_id="alerts", bash_command=cmd("analytics.actions alerts"))
         f_digest = BashOperator(task_id="weekly_digest", bash_command=cmd("analytics.actions digest"))
-        f_competitor >> f_marts >> [f_respond, f_alerts, f_digest]
+        f_ops = BashOperator(task_id="ops_metrics", bash_command=cmd("analytics.ops"))
+        f_competitor >> f_marts >> [f_intel, f_translate, f_respond, f_alerts, f_digest, f_ops]
 
     ingest >> transform >> enrich
     enrich >> exec_brief

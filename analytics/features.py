@@ -52,7 +52,30 @@ DDL = [
         ref_url TEXT, created_at TEXT, sent INTEGER DEFAULT 0)""",
     """CREATE TABLE IF NOT EXISTS audit_log (
         audit_id TEXT PRIMARY KEY, ts TEXT, actor TEXT, action TEXT, detail TEXT)""",
+    # --- Tier 2 (intelligence) ---
+    """CREATE TABLE IF NOT EXISTS mart_churn_risk (
+        entity_key TEXT PRIMARY KEY, name TEXT, kind TEXT, churn_prob REAL, complaints INTEGER,
+        avg_score REAL, mentions INTEGER, top_factor TEXT, updated_at TEXT)""",
+    """CREATE TABLE IF NOT EXISTS mart_forecast (
+        category TEXT, horizon_day TEXT, predicted_mentions REAL, trend TEXT, updated_at TEXT)""",
+    """CREATE TABLE IF NOT EXISTS mart_entities (
+        entity TEXT, etype TEXT, mentions INTEGER, avg_score REAL, updated_at TEXT)""",
+    """CREATE TABLE IF NOT EXISTS translations (
+        source_id TEXT PRIMARY KEY, lang TEXT, english TEXT, model TEXT, created_at TEXT)""",
+    # --- Tier 4 (trust / ops) ---
+    """CREATE TABLE IF NOT EXISTS eval_history (
+        run_ts TEXT, metric TEXT, value REAL)""",
+    """CREATE TABLE IF NOT EXISTS run_metrics (
+        run_ts TEXT PRIMARY KEY, mentions INTEGER, llm_calls INTEGER, tokens_est INTEGER,
+        cost_usd_est REAL, provider TEXT)""",
 ]
+
+CHURN_COLS = ["entity_key", "name", "kind", "churn_prob", "complaints", "avg_score", "mentions", "top_factor", "updated_at"]
+FORECAST_COLS = ["category", "horizon_day", "predicted_mentions", "trend", "updated_at"]
+ENTITY_COLS = ["entity", "etype", "mentions", "avg_score", "updated_at"]
+TRANS_COLS = ["source_id", "lang", "english", "model", "created_at"]
+EVAL_COLS = ["run_ts", "metric", "value"]
+RUNM_COLS = ["run_ts", "mentions", "llm_calls", "tokens_est", "cost_usd_est", "provider"]
 
 PRODUCT_COLS = ["product", "mentions", "pct_negative", "complaints", "avg_score", "nps_proxy", "updated_at"]
 INFL_COLS = ["author", "author_name", "reach", "mentions", "avg_score", "stance", "worst_summary", "url", "updated_at"]

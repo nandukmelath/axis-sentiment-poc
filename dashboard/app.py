@@ -19,6 +19,25 @@ from config import BRAND
 st.set_page_config(page_title=f"{BRAND} — Live Sentiment War-Room", layout="wide",
                    initial_sidebar_state="expanded")
 
+
+def _auth_gate():
+    """Optional access control: set AXIS_DASH_PASSWORD to require a password (open if unset)."""
+    pw = os.getenv("AXIS_DASH_PASSWORD")
+    if not pw or st.session_state.get("_authed"):
+        return True
+    st.title("🔒 Axis Social Intelligence")
+    st.text_input("Password", type="password", key="_pw")
+    if st.button("Enter"):
+        if st.session_state.get("_pw") == pw:
+            st.session_state["_authed"] = True
+            st.rerun()
+        st.error("Wrong password.")
+    return False
+
+
+if not _auth_gate():
+    st.stop()
+
 SENT_COLORS = {"negative": "#C0392B", "positive": "#2E8B57", "neutral": "#7F8C8D", "mixed": "#E67E22"}
 URG_W = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
@@ -119,10 +138,11 @@ _rb[2].caption("Pick a window → fetches Axis mentions for it → DB → the bo
 # ---------------- sidebar: role selector + filters ----------------
 _a0, _ = fresh()
 ROLE_TABS = {
-    "Exec": ["🛰️ War-Room", "🏁 Competitor SOV", "📦 Products", "📈 Trends", "🗞️ Digest"],
-    "RM": ["👤 RM Cockpit", "👥 Customer 360", "✍️ Drafts"],
-    "Ops": ["🛠️ Admin", "🧭 Team Queues", "🛡️ Fraud", "🔔 Alerts", "✍️ Drafts"],
-    "Analyst": ["📈 Trends", "🗺️ Geo", "📢 Influencers", "🔬 Root-cause", "🗣️ Languages", "📦 Products"],
+    "Exec": ["🛰️ War-Room", "🏁 Competitor SOV", "📦 Products", "📈 Trends", "🔮 Forecast", "⚠️ Churn", "🗞️ Digest"],
+    "RM": ["👤 RM Cockpit", "👥 Customer 360", "⚠️ Churn", "✍️ Drafts"],
+    "Ops": ["🛠️ Admin", "🧭 Team Queues", "🛡️ Fraud", "🔔 Alerts", "✍️ Drafts", "💰 Cost/Ops", "📉 Quality"],
+    "Analyst": ["📈 Trends", "🔮 Forecast", "🗺️ Geo", "🏷️ Entities", "📢 Influencers", "🔬 Root-cause",
+                "🗣️ Languages", "📉 Quality", "📦 Products"],
     "Admin (all)": None,   # all tabs
 }
 st.sidebar.header("View")
@@ -370,6 +390,11 @@ TAB_FUNCS = {
     "👥 Customer 360": panels.customer_360,
     "🗣️ Languages": panels.language_panel,
     "🔐 Audit": panels.audit_panel,
+    "⚠️ Churn": panels.churn_panel,
+    "🔮 Forecast": panels.forecast_panel,
+    "🏷️ Entities": panels.entities_panel,
+    "📉 Quality": panels.quality_panel,
+    "💰 Cost/Ops": panels.cost_panel,
 }
 
 _names = ROLE_TABS.get(role) or list(TAB_FUNCS.keys())

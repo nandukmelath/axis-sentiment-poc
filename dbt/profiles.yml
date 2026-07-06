@@ -1,0 +1,21 @@
+# DBT_PROFILES_DIR=./dbt dbt build   (pick target: sqlite for local, postgres for prod)
+axis:
+  target: sqlite
+  outputs:
+    sqlite:
+      type: sqlite
+      threads: 1
+      database: axis
+      schema: main
+      schemas_and_paths:
+        main: "{{ env_var('AXIS_DB_PATH', '../axis.db') }}"
+      schema_directory: "."
+    postgres:
+      type: postgres
+      host: "{{ env_var('PGHOST', 'localhost') }}"
+      port: 5432
+      user: "{{ env_var('PGUSER', 'axis') }}"
+      password: "{{ env_var('PGPASSWORD', 'axis') }}"
+      dbname: "{{ env_var('PGDATABASE', 'axis') }}"
+      schema: public
+      threads: 4

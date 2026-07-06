@@ -258,11 +258,96 @@ def language_panel():
     fig = px.pie(lang, names="lang", values="n", hole=0.55)
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=280)
     st.plotly_chart(fig, width="stretch")
-    sample = _safe("""SELECT c.lang, r.author, c.clean_text, r.url
+    sample = _safe("""SELECT c.lang, r.author, c.clean_text, t.english, r.url
                       FROM clean_posts c JOIN raw_posts r ON c.source_id=r.source_id
+                      LEFT JOIN translations t ON c.source_id=t.source_id
                       WHERE c.lang IN ('hi','hi-en') ORDER BY r.created_at DESC LIMIT 25""")
     st.dataframe(sample, width="stretch", hide_index=True,
                  column_config={"url": st.column_config.LinkColumn("link", display_text="open")})
+
+
+# ---------------------------------------------------------------- Churn risk (Tier 2)
+def churn_panel():
+    st.subheader("⚠️ Churn Risk — predicted")
+    st.caption("Model-scored at-risk customers/handles from mention patterns (act before they leave).")
+    m = _safe("SELECT * FROM mart_churn_risk ORDER BY churn_prob DESC")
+    if m.empty:
+        return _empty("Run `python -m analytics.intelligence`.")
+    st.metric("High-risk (>60%)", int((m["churn_prob"] >= 0.6).sum()))
+    fig = px.bar(m.head(15), x="churn_prob", y="name", orientation="h", color="churn_prob",
+                 color_continuous_scale="Reds", range_color=[0, 1])
+    fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=420, yaxis_title="", xaxis_title="churn probability")
+    st.plotly_chart(fig, width="stretch")
+    st.dataframe(m[["name", "kind", "churn_prob", "complaints", "mentions", "avg_score", "top_factor"]],
+                 width="stretch", hide_index=True)
+
+
+# ---------------------------------------------------------------- Forecast (Tier 2)
+def forecast_panel():
+    st.subheader("🔮 Trend Forecast")
+    st.caption("Predicted mentions per RBI category over the next days (linear fit).")
+    m = _safe("SELECT * FROM mart_forecast ORDER BY horizon_day")
+    if m.empty:
+        return _empty("Run `python -m analytics.intelligence`.")
+    rising = sorted(m[m["trend"] == "rising"]["category"].unique())
+    if rising:
+        st.warning("📈 Rising categories: " + ", ".join(rising))
+    fig = px.line(m, x="horizon_day", y="predicted_mentions", color="category", markers=True)
+    fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=360, xaxis_title="", legend_title="")
+    st.plotly_chart(fig, width="stretch")
+
+
+# ---------------------------------------------------------------- Entities / NER (Tier 2)
+def entities_panel():
+    st.subheader("🏷️ Entities — products & locations")
+    st.caption("Named products/cities extracted from mentions, with their sentiment.")
+    m = _safe("SELECT * FROM mart_entities ORDER BY mentions DESC")
+    if m.empty:
+        return _empty("Run `python -m analytics.intelligence`.")
+    fig = px.bar(m.head(20), x="mentions", y="entity", orientation="h", color="avg_score",
+                 color_continuous_scale=["#C0392B", "#7F8C8D", "#2E8B57"], range_color=[-1, 1],
+                 hover_data=["etype"])
+    fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=440, yaxis_title="", xaxis_title="mentions")
+    st.plotly_chart(fig, width="stretch")
+    st.dataframe(m, width="stretch", hide_index=True)
+
+
+# ---------------------------------------------------------------- Model quality / drift (Tier 4)
+def quality_panel():
+    st.subheader("📉 Model Quality & Drift")
+    st.caption("Quality proxies (LLM coverage, confidence) tracked over runs; drops flag drift.")
+    h = _safe("SELECT * FROM eval_history ORDER BY run_ts")
+    if h.empty:
+        return _empty("Run `python -m analytics.ops`.")
+    try:
+        from analytics.ops import drift_flags
+        for f in drift_flags():
+            st.error(f"⚠️ Drift — {f['metric']}: {f['prev']} → {f['cur']}")
+    except Exception:
+        pass
+    fig = px.line(h, x="run_ts", y="value", color="metric", markers=True)
+    fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=340, xaxis_title="", legend_title="")
+    st.plotly_chart(fig, width="stretch")
+
+
+# ---------------------------------------------------------------- LLM cost + ops (Tier 4)
+def cost_panel():
+    st.subheader("💰 LLM Cost & Pipeline Health")
+    c = _safe("SELECT * FROM run_metrics ORDER BY run_ts DESC LIMIT 1")
+    if c.empty:
+        return _empty("Run `python -m analytics.ops`.")
+    r = c.iloc[0]
+    k = st.columns(4)
+    k[0].metric("Mentions", int(r["mentions"]))
+    k[1].metric("LLM calls", int(r["llm_calls"]))
+    k[2].metric("Tokens (est)", f"{int(r['tokens_est']):,}")
+    k[3].metric("Cost (est)", f"${r['cost_usd_est']}")
+    st.caption(f"provider: {r['provider']} · prices illustrative — confirm against the provider's pricing page.")
+    hist = _safe("SELECT run_ts, cost_usd_est, tokens_est FROM run_metrics ORDER BY run_ts")
+    if len(hist) > 1:
+        fig = px.line(hist, x="run_ts", y="cost_usd_est", markers=True)
+        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=280, xaxis_title="", yaxis_title="cost $ (est)")
+        st.plotly_chart(fig, width="stretch")
 
 
 # ---------------------------------------------------------------- Audit log

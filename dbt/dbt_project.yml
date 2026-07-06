@@ -1,0 +1,15 @@
+name: 'axis_warehouse'
+version: '1.0'
+config-version: 2
+profile: 'axis'
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+seed-paths: ["seeds"]
+
+models:
+  axis_warehouse:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

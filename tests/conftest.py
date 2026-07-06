@@ -30,7 +30,9 @@ def fresh_db():
                   "mart_admin_analytics", "mart_kpis",
                   "mart_product_scorecard", "mart_influencers", "mart_team_queue", "mart_fraud",
                   "mart_trends", "mart_geo", "mart_competitor_sov", "competitor_posts",
-                  "reply_drafts", "alerts", "audit_log"]:
+                  "reply_drafts", "alerts", "audit_log",
+                  "mart_churn_risk", "mart_forecast", "mart_entities", "translations",
+                  "eval_history", "run_metrics"]:
             c.execute(text(f"DROP TABLE IF EXISTS {t}"))
     build.ensure_tables()
     from analytics import features

@@ -39,10 +39,12 @@ def run(window=None):
         summary["warehouse_error"] = str(e)[:150]
 
     try:
-        from analytics import features, actions
+        from analytics import features, actions, intelligence, ops
         features.build_all()
+        intelligence.build_all()
         actions.build_alerts()
         actions.weekly_digest()
+        ops.run_all()
         summary["features"] = "ok"
     except Exception as e:
         summary["features_error"] = str(e)[:150]
