@@ -81,18 +81,35 @@ SCHEMA_HINT = ('\nReturn a JSON object {"results": [ ... ]} — one item per inp
                '"aspects" is a list of {aspect, sentiment, evidence}. Use the enums from the instructions.')
 
 
-def _client_model():
-    if LLM_PROVIDER not in OPENAI_COMPAT:
-        raise RuntimeError(f"LLM_PROVIDER '{LLM_PROVIDER}' not OpenAI-compatible")
-    base, key_env, default_model = OPENAI_COMPAT[LLM_PROVIDER]
+def _client_model(provider=None, model=None):
+    p = provider or LLM_PROVIDER
+    if p not in OPENAI_COMPAT:
+        raise RuntimeError(f"LLM_PROVIDER '{p}' not OpenAI-compatible")
+    base, key_env, default_model = OPENAI_COMPAT[p]
     key = os.getenv(key_env) or os.getenv("LLM_API_KEY")
     if not key:
         raise RuntimeError(f"{key_env} not set (.env)")
-    return OpenAI(base_url=base, api_key=key), (LLM_MODEL or default_model)
+    # LLM_MODEL global override applies only to the primary provider; fallbacks use their default.
+    chosen = model or (LLM_MODEL if (provider is None or provider == LLM_PROVIDER) else "") or default_model
+    return OpenAI(base_url=base, api_key=key), chosen, p
 
 
-def analyze_batch(posts):
-    client, model = _client_model()   # fails fast on missing key (not retried)
+def _is_rate(e):
+    s = str(e).lower()
+    return "429" in s or "rate limit" in s or "quota" in s
+
+
+def _retry_after(e):
+    try:
+        h = getattr(getattr(e, "response", None), "headers", {}) or {}
+        v = h.get("retry-after") or h.get("Retry-After")
+        return float(v) if v else None
+    except Exception:
+        return None
+
+
+def analyze_batch(posts, provider=None):
+    client, model, prov = _client_model(provider)   # fails fast on missing key
     payload = json.dumps(
         [{"source_id": p["source_id"], "source": p.get("source", ""), "text": (p.get("text") or "")[:4000]}
          for p in posts], ensure_ascii=False)
@@ -117,25 +134,30 @@ def analyze_batch(posts):
             return out
         except Exception as e:  # noqa
             last = e
-            wait = min(2 ** attempt + 1, 30)
-            print(f"  {LLM_PROVIDER} retry {attempt+1}/{MAX_RETRIES} in {wait}s ({str(e)[:80]})")
-            time.sleep(wait)
-    raise RuntimeError(f"{LLM_PROVIDER} analyze_batch failed: {last}")
+            if _is_rate(e):     # rate/daily limit — 1 quick retry, then raise so the dispatcher fails over
+                if attempt >= 1:
+                    break
+                time.sleep(min(_retry_after(e) or 3, 5))
+            else:
+                time.sleep(min(2 ** attempt + 1, 20))
+            print(f"  {prov} retry {attempt+1}/{MAX_RETRIES} ({str(e)[:70]})")
+    raise RuntimeError(f"{prov} analyze_batch failed: {last}")
 
 
-def generate_text(prompt, model=None):
-    client, default_model = _client_model()
-    model = model or default_model
+def generate_text(prompt, model=None, provider=None):
+    client, chosen, prov = _client_model(provider, model)
     last = None
-    attempts = max(MAX_RETRIES, 6)
-    for attempt in range(attempts):
+    for attempt in range(MAX_RETRIES):
         try:
-            r = client.chat.completions.create(model=model, messages=[{"role": "user", "content": prompt}])
+            r = client.chat.completions.create(model=chosen, messages=[{"role": "user", "content": prompt}])
             return r.choices[0].message.content
         except Exception as e:  # noqa
             last = e
-            # On a 429 wait out Groq's ~60s per-minute (TPM) window; other errors back off fast.
-            wait = 30 if "429" in str(e) else min(2 ** attempt + 1, 20)
-            print(f"  {LLM_PROVIDER} generate retry {attempt+1}/{attempts} in {wait}s ({str(e)[:80]})")
-            time.sleep(wait)
-    raise RuntimeError(f"{LLM_PROVIDER} generate_text failed: {last}")
+            if _is_rate(e):     # rate/daily limit — 1 quick retry, then raise to fail over
+                if attempt >= 1:
+                    break
+                time.sleep(min(_retry_after(e) or 3, 5))
+            else:
+                time.sleep(min(2 ** attempt + 1, 15))
+            print(f"  {prov} generate retry {attempt+1}/{MAX_RETRIES} ({str(e)[:70]})")
+    raise RuntimeError(f"{prov} generate_text failed: {last}")

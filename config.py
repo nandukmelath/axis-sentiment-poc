@@ -92,6 +92,13 @@ SB_QUERY_TYPE = os.getenv("SB_QUERY_TYPE", "Latest")
 # gemini | groq | openai | openrouter | deepseek | together | cerebras | ollama
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 LLM_MODEL = os.getenv("LLM_MODEL", "")   # override model id; else provider default below
+# Automatic failover chain: when the primary provider hits its rate/daily limit (429),
+# the dispatcher flips to the next configured provider. Set e.g.
+#   LLM_FALLBACKS=cerebras,openrouter,gemini,ollama
+# Each provider uses its own key; providers with no key are skipped. ollama = keyless local.
+# Default chain uses the Gemini key you likely already have, then keyless local Ollama.
+# Providers with no key / not installed are skipped automatically.
+LLM_FALLBACKS = [p.strip() for p in os.getenv("LLM_FALLBACKS", "gemini,ollama").split(",") if p.strip()]
 # Model for the exec brief (single big call) — a lighter model with a bigger free daily
 # budget, so the brief still generates when the main classify model's daily cap is hit.
 BRIEF_MODEL = os.getenv("BRIEF_MODEL", "llama-3.1-8b-instant")
