@@ -1,0 +1,5 @@
+[tool.bandit]
+# B608 (hardcoded_sql_expressions): every user-supplied value is passed as a SQLAlchemy
+# bind parameter (:name) — never string-interpolated. The only f-string SQL is int()-cast
+# LIMIT/OFFSET and internal (constant) table/column identifiers. These are safe by construction.
+skips = ["B608"]

@@ -22,7 +22,7 @@ def fetch_brand(brand, limit=15):
     d = feedparser.parse(NEWS.format(q=urllib.parse.quote(f'"{brand}"')))
     for e in d.entries[:limit]:
         text = f"{e.get('title', '')}. {e.get('summary', '')}"
-        sid = "comp:" + hashlib.md5((brand + (e.get("link") or text)).encode()).hexdigest()[:12]
+        sid = "comp:" + hashlib.md5((brand + (e.get("link") or text)).encode(), usedforsecurity=False).hexdigest()[:12]
         f = classify_fast(text)
         rows[sid] = dict(source_id=sid, brand=brand, source="news",
                          author=e.get("source", {}).get("title", "news"), text=text,

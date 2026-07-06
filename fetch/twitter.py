@@ -21,7 +21,7 @@ def _sid(url, text):
     seg = (url or "").rstrip("/").split("/")[-1]
     if seg.isdigit():
         return f"x:{seg}"
-    return "x:" + hashlib.md5((text or url or "").encode("utf-8")).hexdigest()[:12]
+    return "x:" + hashlib.md5((text or url or "").encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 def _from_csv():

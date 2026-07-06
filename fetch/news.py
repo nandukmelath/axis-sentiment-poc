@@ -15,7 +15,7 @@ def fetch():
         d = feedparser.parse(RSS.format(q=q))
         for e in d.entries[:per]:
             text = f"{e.get('title','')}. {e.get('summary','')}"
-            sid = "news:" + hashlib.md5(e.get("link", text).encode()).hexdigest()[:12]
+            sid = "news:" + hashlib.md5(e.get("link", text).encode(), usedforsecurity=False).hexdigest()[:12]
             rows[sid] = dict(
                 source_id=sid, source="news", author=e.get("source", {}).get("title", "news"),
                 text=text, url=e.get("link", ""), created_at=e.get("published", ""),

@@ -12,5 +12,6 @@ weekly_digest.md
 masked_mentions.csv
 .pytest_cache/
 .coverage
+backups/
 *.egg-info/
 logs/

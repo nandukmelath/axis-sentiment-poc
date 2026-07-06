@@ -109,6 +109,20 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 FETCH_LIMITS = {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 30,
                 "bluesky": 25, "hackernews": 30, "mastodon": 20}
 
+def validate():
+    """Startup sanity check — returns a list of human-readable config warnings (never raises)."""
+    warns = []
+    p = LLM_PROVIDER
+    if p in OPENAI_COMPAT and not os.getenv(OPENAI_COMPAT[p][1]):
+        warns.append(f"LLM_PROVIDER={p} but {OPENAI_COMPAT[p][1]} not set — LLM depth will fall back (keyless).")
+    if p == "gemini" and not os.getenv("GEMINI_API_KEY"):
+        warns.append("LLM_PROVIDER=gemini but GEMINI_API_KEY not set — cluster embeddings fall back to TF-IDF.")
+    if not any(os.getenv(k) for k in ("SCRAPEBADGER_API_KEY", "REDDIT_CLIENT_ID", "YOUTUBE_API_KEY")):
+        warns.append("No keyed sources configured — running on keyless sources only "
+                     "(news/play/appstore/mastodon/hackernews).")
+    return warns
+
+
 # ---- warehouse / RM + CX layer ----
 # Official Axis reply handles (normalised, no @) — used to detect a BANK response in a
 # public thread so we can measure resolution + satisfaction. Reuses the verified X list.

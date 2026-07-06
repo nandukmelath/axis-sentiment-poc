@@ -46,7 +46,7 @@ def _clean(row):
     norm = re.sub(r"[^a-z0-9ऀ-ॿ ]", "", t.lower())
     row = dict(row)
     row["clean_text"] = t
-    row["text_hash"] = hashlib.md5(norm.encode("utf-8")).hexdigest()
+    row["text_hash"] = hashlib.md5(norm.encode("utf-8"), usedforsecurity=False).hexdigest()
     row["_n_urls"] = n_urls
     return row
 

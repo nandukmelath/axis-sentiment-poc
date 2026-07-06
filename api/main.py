@@ -5,12 +5,38 @@ Run:  uvicorn api.main:app --host 0.0.0.0 --port 8600
 Docs: http://localhost:8600/docs
 """
 import os
-from fastapi import FastAPI, Header, HTTPException, Depends
+import time
+from collections import defaultdict, deque
+
+from fastapi import FastAPI, Header, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import db
 
 app = FastAPI(title="Axis Social Intelligence API", version="1.0",
               description="Read-only access to the sentiment marts.")
+
+# CORS — restrict to configured origins (comma-separated) or '*' for dev.
+_origins = os.getenv("AXIS_API_CORS", "*").split(",")
+app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_methods=["GET"], allow_headers=["*"])
+
+# Lightweight in-memory rate limit (per-IP, per-minute) — no extra dependency.
+_RATE = int(os.getenv("AXIS_API_RATE_PER_MIN", "120"))
+_hits = defaultdict(deque)
+
+
+@app.middleware("http")
+async def _rate_limit(request: Request, call_next):
+    ip = request.client.host if request.client else "?"
+    now = time.time()
+    q = _hits[ip]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= _RATE:
+        return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
+    q.append(now)
+    return await call_next(request)
 
 
 def auth(x_api_key: str = Header(default=None)):
@@ -18,6 +44,15 @@ def auth(x_api_key: str = Header(default=None)):
     if want and x_api_key != want:
         raise HTTPException(status_code=401, detail="invalid or missing x-api-key")
     return True
+
+
+@app.get("/ready")
+def ready():
+    try:
+        db.df("SELECT 1 AS ok")
+        return {"status": "ready", "db": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"db not ready: {str(e)[:80]}")
 
 
 def _rows(sql, params=None):
@@ -40,9 +75,9 @@ def kpis():
 
 
 @app.get("/clusters", dependencies=[Depends(auth)])
-def clusters(limit: int = 10):
+def clusters(limit: int = 10, offset: int = 0):
     return _rows(f"SELECT title, size, top_team, recent_share, avg_score FROM clusters "
-                 f"ORDER BY size DESC LIMIT {int(limit)}")
+                 f"ORDER BY size DESC LIMIT {int(limit)} OFFSET {int(offset)}")
 
 
 @app.get("/competitor-sov", dependencies=[Depends(auth)])
@@ -56,13 +91,15 @@ def alerts():
 
 
 @app.get("/churn", dependencies=[Depends(auth)])
-def churn(limit: int = 20):
-    return _rows(f"SELECT * FROM mart_churn_risk ORDER BY churn_prob DESC LIMIT {int(limit)}")
+def churn(limit: int = 20, offset: int = 0):
+    return _rows(f"SELECT * FROM mart_churn_risk ORDER BY churn_prob DESC "
+                 f"LIMIT {int(limit)} OFFSET {int(offset)}")
 
 
 @app.get("/products", dependencies=[Depends(auth)])
-def products():
-    return _rows("SELECT * FROM mart_product_scorecard ORDER BY mentions DESC")
+def products(limit: int = 100, offset: int = 0):
+    return _rows(f"SELECT * FROM mart_product_scorecard ORDER BY mentions DESC "
+                 f"LIMIT {int(limit)} OFFSET {int(offset)}")
 
 
 @app.get("/forecast", dependencies=[Depends(auth)])

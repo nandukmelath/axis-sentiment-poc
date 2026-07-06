@@ -17,7 +17,7 @@ AUDIT_COLS = ["audit_id", "ts", "actor", "action", "detail"]
 
 
 def audit(actor, action, detail=""):
-    aid = "aud:" + hashlib.md5(f"{db.now()}|{actor}|{action}|{detail}".encode()).hexdigest()[:16]
+    aid = "aud:" + hashlib.md5(f"{db.now()}|{actor}|{action}|{detail}".encode(), usedforsecurity=False).hexdigest()[:16]
     db.upsert_rows("audit_log", [dict(audit_id=aid, ts=db.now(), actor=actor,
                                       action=action, detail=str(detail)[:400])], "audit_id", AUDIT_COLS)
     return aid
@@ -82,7 +82,7 @@ ALERT_COLS = ["alert_id", "kind", "severity", "title", "detail", "ref_url", "cre
 
 
 def _alert(kind, severity, title, detail="", ref_url=""):
-    aid = "alert:" + hashlib.md5(f"{kind}|{title}".encode()).hexdigest()[:16]
+    aid = "alert:" + hashlib.md5(f"{kind}|{title}".encode(), usedforsecurity=False).hexdigest()[:16]
     return dict(alert_id=aid, kind=kind, severity=severity, title=title, detail=detail,
                 ref_url=ref_url, created_at=db.now(), sent=0)
 

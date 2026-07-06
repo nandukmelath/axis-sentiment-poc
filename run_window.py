@@ -12,6 +12,13 @@ def run(window=None):
     summary = {"window": window or "all"}
 
     try:
+        import config
+        for w in config.validate():
+            print(f"  [config] {w}")
+    except Exception:
+        pass
+
+    try:
         from fetch.run_fetch import run as fetch_run
         summary["fetched"] = fetch_run(window=window)
     except Exception as e:
