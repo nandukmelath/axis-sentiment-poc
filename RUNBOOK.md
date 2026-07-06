@@ -44,6 +44,28 @@ Trigger: UI **Trigger DAG**, or `airflow dags trigger axis_sentiment_pipeline`.
 - Keys live in `.env` (git-ignored). Never commit. `LLM_PROVIDER=groq` + `GROQ_API_KEY` for LLM depth.
 - **Rotate a leaked key**: console.groq.com/keys (Groq) — revoke + recreate, update `.env`. No restart needed (read per run).
 
+## Production: Postgres + Airflow LocalExecutor (parallel) — verified locally
+Kills the SQLite-on-WSL fragility and runs tasks in parallel (measured: 9 concurrent, 27/27 green).
+
+```bash
+# 1. Postgres (local WSL, or a Supabase/Neon URL)
+sudo apt-get install -y postgresql
+sudo -u postgres psql -c "CREATE USER axis WITH PASSWORD 'axis' SUPERUSER;" -c "CREATE DATABASE axis OWNER axis;"
+
+# 2. Migrate the data + rebuild the derived layer on Postgres
+DATABASE_URL="postgresql+psycopg2://axis:axis@localhost:5432/axis" python -m tools.migrate_pg
+DATABASE_URL="postgresql+psycopg2://axis:axis@localhost:5432/axis" python -m warehouse.dq_checks   # 11/11
+
+# 3. Airflow on Postgres + LocalExecutor (parallel)
+sudo -u postgres createdb -O axis airflow
+pip install psycopg2-binary
+export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://axis:axis@localhost:5432/airflow"
+export AIRFLOW__CORE__EXECUTOR=LocalExecutor AIRFLOW__CORE__PARALLELISM=16
+export DATABASE_URL="postgresql+psycopg2://axis:axis@localhost:5432/axis"    # tasks use PG too
+airflow db migrate && airflow standalone
+```
+Run the suite on Postgres (dual-dialect): `TEST_DATABASE_URL="postgresql+psycopg2://axis:axis@localhost:5432/axis_test" pytest`.
+
 ## Move DB to Supabase/Postgres (prod)
 ```bash
 export DATABASE_URL="postgresql+psycopg2://...supabase...?sslmode=require"
