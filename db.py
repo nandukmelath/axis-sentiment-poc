@@ -34,9 +34,9 @@ if DIALECT == "sqlite":
 DDL = [
     """CREATE TABLE IF NOT EXISTS raw_posts (
         source_id TEXT PRIMARY KEY, source TEXT, author TEXT, author_name TEXT, text TEXT, url TEXT,
-        created_at TEXT, fetched_at TEXT, lang TEXT, engagement INTEGER DEFAULT 0,
-        reply_count INTEGER, retweet_count INTEGER, quote_count INTEGER, view_count INTEGER,
-        bookmark_count INTEGER, conversation_id TEXT, raw_json TEXT)""",
+        created_at TEXT, fetched_at TEXT, lang TEXT, engagement BIGINT DEFAULT 0,
+        reply_count BIGINT, retweet_count BIGINT, quote_count BIGINT, view_count BIGINT,
+        bookmark_count BIGINT, conversation_id TEXT, raw_json TEXT)""",
     """CREATE TABLE IF NOT EXISTS analysis (
         source_id TEXT PRIMARY KEY, sentiment TEXT, score REAL, emotion TEXT,
         emotion_intensity INTEGER, sarcasm INTEGER, intent TEXT, urgency TEXT, urgency_reason TEXT,
@@ -71,8 +71,8 @@ RAW_COLS = ["source_id", "source", "author", "author_name", "text", "url", "crea
             "bookmark_count", "conversation_id", "raw_json"]
 
 # columns added after the first release — auto-added to existing DBs by migrate()
-MIGRATIONS = {"raw_posts": {"author_name": "TEXT", "reply_count": "INTEGER", "retweet_count": "INTEGER",
-                            "quote_count": "INTEGER", "view_count": "INTEGER", "bookmark_count": "INTEGER",
+MIGRATIONS = {"raw_posts": {"author_name": "TEXT", "reply_count": "BIGINT", "retweet_count": "BIGINT",
+                            "quote_count": "BIGINT", "view_count": "BIGINT", "bookmark_count": "BIGINT",
                             "conversation_id": "TEXT"},
               "analysis": {"text_masked": "TEXT", "pii_types": "TEXT"}}
 ANALYSIS_COLS = ["source_id", "sentiment", "score", "emotion", "emotion_intensity", "sarcasm", "intent",
@@ -135,10 +135,28 @@ def init_db():
     print(f"db ready [{DIALECT}]: {DB_URL}")
 
 
+def _na(v):
+    # SQLite tolerates NaN + numpy scalars; Postgres/psycopg2 do not. Coerce NaN/NaT -> NULL and
+    # cast numpy scalars (np.float64/np.int64 — whose numpy-2 repr breaks SQL) to native Python.
+    if v is None:
+        return None
+    try:
+        if v != v:                        # NaN != NaN
+            return None
+    except Exception:
+        pass
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):
+        try:
+            return v.item()
+        except Exception:
+            pass
+    return v
+
+
 def _upsert(table, rows, pk, cols, replace):
     if not rows:
         return 0
-    norm = [{k: r.get(k) for k in cols} for r in rows]
+    norm = [{k: _na(r.get(k)) for k in cols} for r in rows]
     collist = ",".join(cols)
     ph = ",".join(f":{c}" for c in cols)
     if DIALECT == "sqlite":
@@ -234,7 +252,7 @@ def insert_rows(table, rows, cols):
     """Plain INSERT (no conflict clause) — for fact tables rebuilt after DELETE."""
     if not rows:
         return 0
-    norm = [{k: r.get(k) for k in cols} for r in rows]
+    norm = [{k: _na(r.get(k)) for k in cols} for r in rows]
     collist = ",".join(cols)
     ph = ",".join(f":{c}" for c in cols)
     with _engine.begin() as c:

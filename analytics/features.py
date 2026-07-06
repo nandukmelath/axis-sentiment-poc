@@ -24,7 +24,7 @@ DDL = [
         product TEXT PRIMARY KEY, mentions INTEGER, pct_negative REAL, complaints INTEGER,
         avg_score REAL, nps_proxy REAL, updated_at TEXT)""",
     """CREATE TABLE IF NOT EXISTS mart_influencers (
-        author TEXT PRIMARY KEY, author_name TEXT, reach INTEGER, mentions INTEGER,
+        author TEXT PRIMARY KEY, author_name TEXT, reach BIGINT, mentions INTEGER,
         avg_score REAL, stance TEXT, worst_summary TEXT, url TEXT, updated_at TEXT)""",
     """CREATE TABLE IF NOT EXISTS mart_team_queue (
         team TEXT PRIMARY KEY, open_items INTEGER, critical INTEGER, fraud INTEGER,

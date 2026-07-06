@@ -9,7 +9,10 @@ _ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 _TMPDIR = tempfile.mkdtemp(prefix="axis_test_")
-os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMPDIR, "test.db").replace("\\", "/")
+# Default to an isolated temp SQLite; set TEST_DATABASE_URL to run the suite on Postgres
+# (dual-dialect verification) — point it at a DEDICATED test db (the fixture drops tables).
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or \
+    ("sqlite:///" + os.path.join(_TMPDIR, "test.db").replace("\\", "/"))
 os.environ["PII_MASK"] = "1"
 os.environ["CASCADE"] = "1"
 
@@ -24,6 +27,7 @@ def fresh_db():
     # drop + recreate the tables we exercise so tests are independent
     with db.get_engine().begin() as c:
         from sqlalchemy import text
+        c.execute(text("DROP VIEW IF EXISTS scored_posts"))   # PG blocks dropping tables it depends on
         for t in ["raw_posts", "analysis", "clusters", "clean_posts", "dim_author", "dim_customer",
                   "dim_rm", "dim_product", "bridge_handle_customer", "fact_mention",
                   "fact_aspect_sentiment", "fact_interaction", "mart_rm_enablement",

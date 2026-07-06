@@ -63,8 +63,8 @@ DDL = [
     """CREATE TABLE IF NOT EXISTS fact_mention (
         source_id TEXT PRIMARY KEY, author TEXT, author_key TEXT, customer_key TEXT, source TEXT,
         created_date TEXT, sentiment TEXT, score REAL, emotion_intensity INTEGER, intent TEXT,
-        urgency TEXT, recommended_team TEXT, rbi_category TEXT, product TEXT, engagement INTEGER,
-        view_count INTEGER, confidence REAL, churn_risk INTEGER, fraud_signal INTEGER,
+        urgency TEXT, recommended_team TEXT, rbi_category TEXT, product TEXT, engagement BIGINT,
+        view_count BIGINT, confidence REAL, churn_risk INTEGER, fraud_signal INTEGER,
         pii_present INTEGER, cluster_id INTEGER)""",
     """CREATE TABLE IF NOT EXISTS fact_aspect_sentiment (
         source_id TEXT, aspect TEXT, sentiment TEXT, evidence TEXT)""",
