@@ -40,6 +40,13 @@ def test_generate_text_failover(monkeypatch):
     assert llm.generate_text("hi", model="llama-3.1-8b-instant") == "brief"
 
 
+def test_freellmapi_provider_registered():
+    from config import OPENAI_COMPAT
+    assert "freellmapi" in OPENAI_COMPAT
+    base, key_env, model = OPENAI_COMPAT["freellmapi"]
+    assert "/v1" in base and key_env == "FREELLM_API_KEY"
+
+
 def test_all_providers_fail_raises(monkeypatch):
     monkeypatch.setattr(llm, "LLM_PROVIDER", "groq")
     monkeypatch.setattr(llm, "LLM_FALLBACKS", [])

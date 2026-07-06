@@ -103,7 +103,11 @@ LLM_FALLBACKS = [p.strip() for p in os.getenv("LLM_FALLBACKS", "gemini,ollama").
 # budget, so the brief still generates when the main classify model's daily cap is hit.
 BRIEF_MODEL = os.getenv("BRIEF_MODEL", "llama-3.1-8b-instant")
 # OpenAI-compatible providers: name -> (base_url, api_key_env, default_model)
+# FreeLLMAPI (nandukmelath/freellmapi) aggregates 16 free providers (~1.7B tokens/mo) behind ONE
+# endpoint with its own router + failover — set LLM_PROVIDER=freellmapi to route everything through it.
 OPENAI_COMPAT = {
+    "freellmapi": (os.getenv("FREELLM_BASE_URL", "http://localhost:3001/v1"), "FREELLM_API_KEY",
+                   os.getenv("FREELLM_MODEL", "auto")),
     "groq":       ("https://api.groq.com/openai/v1",   "GROQ_API_KEY",       "llama-3.3-70b-versatile"),
     "openai":     ("https://api.openai.com/v1",        "OPENAI_API_KEY",     "gpt-4o-mini"),
     "openrouter": ("https://openrouter.ai/api/v1",     "OPENROUTER_API_KEY", "meta-llama/llama-3.3-70b-instruct"),
