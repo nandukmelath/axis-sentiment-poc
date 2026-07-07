@@ -40,8 +40,14 @@ Everything reads/writes the same Neon DB via `DATABASE_URL`, so the tiers stay d
 
 ---
 
-## Phase 0 — Code → GitHub  ✅ (done by the assistant)
-Repo pushed (private). `.env`, `axis.db`, `fetch/x_state.json` are gitignored — no secrets leave the machine.
+## Phase 0 — Code → GitHub  ✅ (done)
+Repo pushed **private**: https://github.com/nandukmelath/axis-sentiment-poc
+`.env`, `axis.db`, `fetch/x_state.json` gitignored — no secrets left the machine.
+
+> ⚠️ The `.github/workflows/` files are **held back** — the gh OAuth token lacks the
+> `workflow` scope. They exist locally (`pipeline.yml`, `ci.yml`). To land them, either:
+> 1. `gh auth refresh -h github.com -s workflow` → `git add -f .github/workflows && git commit -m "add workflows" && git push`, **or**
+> 2. GitHub repo → **Actions → New workflow → set up a workflow yourself** → paste `pipeline.yml` (web UI isn't scope-gated).
 
 ## Phase 1 — DB tier → Neon
 1. Sign up at **neon.tech** (GitHub login, no card). New project → region close to you.
