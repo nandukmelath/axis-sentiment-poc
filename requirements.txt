@@ -31,3 +31,9 @@ openai>=1.30            # OpenAI-compatible providers (Groq/OpenAI/OpenRouter/De
 
 # --- X.com authenticated crawler (Phase 6) ---
 playwright>=1.40        # after install: python -m playwright install chromium
+
+# --- known transitive CVEs (assessed, tracked) ---
+# apache-beam 2.74 pins cryptography<48 and pyarrow<19, blocking the patched releases for
+# GHSA-537c-gmf6-5ccf (cryptography) + PYSEC-2026-113 (pyarrow). Neither is in our call
+# path (no direct cryptography use; no untrusted parquet). Local envs run cryptography 49
+# (beam DirectRunner unaffected, suite green). Bump both when beam widens its pins.
