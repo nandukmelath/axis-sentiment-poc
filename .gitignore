@@ -17,3 +17,8 @@ backups/
 logs/
 *.log
 .streamlit/secrets.toml
+# Workflows held back from push: the gh OAuth token lacks the `workflow` scope.
+# To enable the cron: `gh auth refresh -h github.com -s workflow` then
+# `git add -f .github/workflows && git commit -m "add workflows" && git push`.
+# (Or add pipeline.yml via GitHub -> Actions -> New workflow, which isn't scope-gated.)
+.github/workflows/
