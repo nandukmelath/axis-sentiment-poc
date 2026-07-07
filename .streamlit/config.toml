@@ -1,12 +1,10 @@
 # Streamlit Community Cloud config for the dashboard (frontend tier).
 [theme]
 base = "dark"
-primary_color = "#8A1538"        # Axis maroon
+primaryColor = "#8A1538"        # Axis maroon
 
 [server]
 headless = true
-enableCORS = false
-enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false

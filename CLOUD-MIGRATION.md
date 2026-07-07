@@ -81,7 +81,11 @@ unified key from `GET /api/settings/api-key`.
 2. Create service → **GitHub** → this repo → **Dockerfile** = `Dockerfile.api`.
 3. Env var: `DATABASE_URL` = the Neon URL. (Optional `API_KEY` to gate writes.)
 4. Deploy → public `https://<app>.koyeb.app`. Test:
-   `curl https://<app>.koyeb.app/health` and `/kpis`.
+   `bash tools/smoke_api.sh https://<app>.koyeb.app` (all 11 endpoints must return 200).
+
+**Free alternatives (same Dockerfile.api):**
+- **Render** (render.com) — deploys unchanged (`$PORT` injected); sleeps after 15 min idle (~30 s wake). Fine here — the dashboard reads Neon directly, not via the API.
+- **Hugging Face Spaces** (huggingface.co/spaces, Docker Space) — 16 GB RAM, rarely sleeps; needs the app on port **7860** (`ENV PORT=7860`) and offers no free custom domain.
 
 ## Phase 5 — Frontend → Streamlit Community Cloud
 1. Sign in at **share.streamlit.io** (GitHub login).

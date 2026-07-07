@@ -16,6 +16,9 @@ google-api-python-client>=2.100
 streamlit>=1.30
 plotly>=5.18
 
+# --- transform stage (Apache Beam; DirectRunner local/CI, DataflowRunner at cloud scale) ---
+apache-beam>=2.60
+
 # --- streaming ingest (Phase 5) ---
 websocket-client>=1.7   # Bluesky Jetstream firehose
 requests>=2.31          # Mastodon streaming

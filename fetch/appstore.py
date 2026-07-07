@@ -5,13 +5,20 @@ import json, urllib.request, urllib.parse
 from config import APPSTORE_APP_ID, APPSTORE_SEARCH, FETCH_LIMITS
 
 
+def _open_https(url, timeout=20):
+    """urlopen restricted to https — blocks file:// / custom-scheme injection (bandit B310)."""
+    if not url.startswith("https://"):
+        raise ValueError(f"refusing non-https URL: {url[:60]}")
+    return urllib.request.urlopen(url, timeout=timeout)  # nosec B310 — scheme enforced above
+
+
 def _resolve_id():
     if APPSTORE_APP_ID:
         return APPSTORE_APP_ID
     try:
         u = "https://itunes.apple.com/search?" + urllib.parse.urlencode(
             {"term": APPSTORE_SEARCH, "country": "in", "entity": "software", "limit": 1})
-        with urllib.request.urlopen(u, timeout=20) as r:
+        with _open_https(u) as r:
             res = json.load(r).get("results", [])
         return str(res[0]["trackId"]) if res else ""
     except Exception:
@@ -26,7 +33,7 @@ def fetch():
     url = (f"https://itunes.apple.com/in/rss/customerreviews/id={app_id}"
            f"/sortBy=mostRecent/json")
     try:
-        with urllib.request.urlopen(url, timeout=20) as r:
+        with _open_https(url) as r:
             data = json.load(r)
         entries = data.get("feed", {}).get("entry", [])[1:]  # first entry = app meta
     except Exception as e:

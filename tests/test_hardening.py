@@ -9,6 +9,28 @@ def test_config_validate_returns_list():
     assert isinstance(config.validate(), list)
 
 
+def test_appstore_rejects_non_https():
+    # _open_https guards urlopen against file:// / custom-scheme injection (bandit B310)
+    import pytest
+    from fetch.appstore import _open_https
+    with pytest.raises(ValueError):
+        _open_https("file:///etc/passwd")
+    with pytest.raises(ValueError):
+        _open_https("http://insecure.example.com")
+
+
+def test_scrapebadger_credits_exhausted_degrades(monkeypatch):
+    # 402 (credits out) must skip the source cleanly, not crash the fetch run
+    import fetch.scrapebadger as sb
+    monkeypatch.setenv("SCRAPEBADGER_API_KEY", "sb_test_dummy")
+
+    def boom(*a, **k):
+        raise sb.CreditsExhausted("ScrapeBadger credits exhausted (HTTP 402)")
+
+    monkeypatch.setattr(sb, "search", boom)
+    assert sb.fetch() == []
+
+
 def test_logging_setup_idempotent():
     from logging_setup import get_logger
     log = get_logger("axis_test")

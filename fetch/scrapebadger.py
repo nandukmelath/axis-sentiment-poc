@@ -75,7 +75,8 @@ def _get(params, retries=6):
             time.sleep(wait)
             continue
         if r.status_code == 402:
-            raise CreditsExhausted()
+            raise CreditsExhausted(
+                "ScrapeBadger credits exhausted (HTTP 402) — top up at scrapebadger.com")
         print(f"  [scrapebadger] HTTP {r.status_code}: {r.text[:120]}")
         return None
     return None
@@ -109,7 +110,12 @@ def fetch():
     if not _has_key():
         print("  [scrapebadger] SCRAPEBADGER_API_KEY not set — skipping (no X source).")
         return []
-    rows = search(SB_QUERY, SB_QUERY_TYPE, max_pages=SB_PAGES)
+    try:
+        rows = search(SB_QUERY, SB_QUERY_TYPE, max_pages=SB_PAGES)
+    except CreditsExhausted as e:
+        # degrade gracefully — the other sources still run; twitter.py CSV import is the fallback
+        print(f"  [scrapebadger] skipped — {e}")
+        return []
     print(f"  [scrapebadger] {len(rows)}")
     return rows
 

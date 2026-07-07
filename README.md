@@ -1,15 +1,20 @@
-# Axis Bank — Social Sentiment POC
+# Axis Bank — Social Intelligence Platform
 
-Fetch public social posts about Axis Bank → **LLM decision-grade sentiment analysis** → issue clustering + exec brief → dashboard. Free stack; Gemini free tier powers the AI.
+Fetch public social posts about Axis Bank → **LLM decision-grade sentiment analysis** → star-schema warehouse → insight marts (churn/forecast/fraud/geo/competitor-SOV) → live war-room dashboard + read API. Free stack end-to-end; a 6-provider LLM failover pool (FreeLLMAPI or direct) powers the AI.
 
-This repo currently contains the **AI sentiment layer** (the core) + an eval harness + seed data, so you can prove the engine today with just a Gemini key. Fetchers and the Streamlit dashboard are the next phases.
+**Everything below is built and tested** (83 tests, dual-dialect SQLite/Postgres, 11-check DQ gate):
+fetchers (9 sources) · Beam transform · VADER→LLM cascade · clustering · SCD2 warehouse ·
+13 insight marts · Streamlit war-room (role-based tabs) · FastAPI read API · Airflow DAG (27 tasks) ·
+dbt project · CI (pytest+bandit+pip-audit). Cloud deploy: see **CLOUD-MIGRATION.md**
+(Neon Postgres + GitHub Actions cron + Koyeb API + Streamlit Cloud). Ops: **RUNBOOK.md**.
 
 ## Pipeline
 
 ```
-FETCH (Phase 1)      STORE          AI LAYER (built now)              INSIGHTS (built now)     REPORT (Phase 4)
-Reddit/YouTube/  ->  SQLite   ->  run_analyze  (per-post record)  -> embed_cluster (issues) -> Streamlit
-Play/News/X          axis.db      exec_summary (board brief)          run_eval (accuracy %)
+FETCH (9 sources)     STORE               AI LAYER                    WAREHOUSE + INSIGHTS         SERVE
+News/Play/AppStore -> SQLite or   ->  Beam transform            ->  dims/facts (SCD2)        ->  Streamlit war-room
+Reddit/YT/X/HN/     Postgres          VADER -> LLM cascade          13 marts + alerts            FastAPI read API
+Mastodon/Bluesky    (DATABASE_URL)    embed_cluster + exec brief    DQ gate (11 checks)          weekly digest
 ```
 
 ## What the AI layer extracts (per post)
@@ -70,9 +75,11 @@ text,author,url,created_at,engagement
 ```
 `run_fetch` imports them with stable ids (re-import = no duplicates). Get the rows from: a manual X search copy/paste, a browser export, or a paid X API pull. Set `TWITTER_MODE=scrape` to try the (usually empty) Nitter scraper, or `auto` for scrape-then-CSV.
 
-## Next phases
-- **Competitor SOV** — fetch HDFC/ICICI mentions too for share-of-voice.
-- Schedule `run_all.py` via Windows Task Scheduler for near-real-time.
+## One-shot runs
+- `python -m run_window --window 1h|1d|1m` — windowed fetch→classify→marts (the dashboard RUN button).
+- `python -m run_harvest` — max harvest: everything above + resolution/translate/competitor/brief/DQ.
+  Scale fetch caps with `FETCH_MULT=8`.
+- Competitor SOV (HDFC/ICICI/SBI/Kotak) is built in (`analytics/competitor.py`, runs inside harvest).
 
 ## Phase 5 — streaming, Postgres/Docker, cost cascade (BUILT)
 
