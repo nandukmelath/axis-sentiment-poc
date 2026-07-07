@@ -47,6 +47,16 @@ def test_freellmapi_provider_registered():
     assert "/v1" in base and key_env == "FREELLM_API_KEY"
 
 
+def test_loads_strips_json_fences():
+    # FreeLLMAPI-routed Gemini wraps JSON in ```json fences even under json_object mode.
+    from analyze.openai_compat import _loads
+    assert _loads('```json\n{"ok": true}\n```') == {"ok": True}
+    assert _loads('```\n[{"a":1}]\n```') == [{"a": 1}]
+    assert _loads('{"plain": 1}') == {"plain": 1}
+    # salvage JSON embedded in prose
+    assert _loads('Here you go: {"x": 2} hope that helps') == {"x": 2}
+
+
 def test_all_providers_fail_raises(monkeypatch):
     monkeypatch.setattr(llm, "LLM_PROVIDER", "groq")
     monkeypatch.setattr(llm, "LLM_FALLBACKS", [])

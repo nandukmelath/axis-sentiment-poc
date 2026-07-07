@@ -117,8 +117,11 @@ OPENAI_COMPAT = {
 }
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-FETCH_LIMITS = {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 30,
-                "bluesky": 25, "hackernews": 30, "mastodon": 20}
+# FETCH_MULT scales every source's cap (env, default 1) — set high for a max harvest run.
+_FETCH_MULT = float(os.getenv("FETCH_MULT", "1"))
+FETCH_LIMITS = {k: max(v, int(v * _FETCH_MULT)) for k, v in
+                {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 30,
+                 "bluesky": 25, "hackernews": 30, "mastodon": 20}.items()}
 
 def validate():
     """Startup sanity check — returns a list of human-readable config warnings (never raises)."""

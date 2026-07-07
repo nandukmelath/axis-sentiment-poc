@@ -2,7 +2,7 @@
 Together, Cerebras (any /v1/chat/completions endpoint). Set LLM_PROVIDER + the
 matching *_API_KEY in .env. JSON-object output; the VADER baseline is the safety net,
 so any post the LLM can't parse simply stays VADER-scored (never lost)."""
-import os, json, time
+import os, json, time, re
 from openai import OpenAI
 from config import LLM_PROVIDER, LLM_MODEL, OPENAI_COMPAT, MAX_RETRIES
 from analyze.schema import (PostAnalysis, Sentiment, Emotion, Urgency, Intent, Aspect,
@@ -94,6 +94,25 @@ def _client_model(provider=None, model=None):
     return OpenAI(base_url=base, api_key=key), chosen, p
 
 
+_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
+
+
+def _loads(content):
+    """Parse model JSON tolerant of ```json fences / prose wrapping. Some providers
+    (Gemini via FreeLLMAPI) still wrap output in markdown even under json_object mode."""
+    if content is None:
+        raise ValueError("empty LLM response")
+    s = _FENCE.sub("", content.strip())
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        # salvage the first {...} or [...] block from surrounding prose
+        m = re.search(r"[\{\[].*[\}\]]", s, re.DOTALL)
+        if m:
+            return json.loads(m.group(0))
+        raise
+
+
 def _is_rate(e):
     s = str(e).lower()
     return "429" in s or "rate limit" in s or "quota" in s
@@ -120,7 +139,7 @@ def analyze_batch(posts, provider=None):
                 model=model, temperature=0.1, response_format={"type": "json_object"},
                 messages=[{"role": "system", "content": SYSTEM + SCHEMA_HINT},
                           {"role": "user", "content": USER_TEMPLATE.format(payload=payload)}])
-            data = json.loads(resp.choices[0].message.content)
+            data = _loads(resp.choices[0].message.content)
             items = _items(data)
             out = []
             for i, d in enumerate(items):

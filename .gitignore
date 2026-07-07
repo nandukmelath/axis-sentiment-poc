@@ -15,3 +15,5 @@ masked_mentions.csv
 backups/
 *.egg-info/
 logs/
+*.log
+.streamlit/secrets.toml

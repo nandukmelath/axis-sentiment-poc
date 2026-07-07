@@ -12,6 +12,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+# Streamlit Community Cloud: bridge st.secrets -> env so db.py picks up the Neon URL at import.
+try:
+    if hasattr(st, "secrets") and "DATABASE_URL" in st.secrets:
+        os.environ.setdefault("DATABASE_URL", st.secrets["DATABASE_URL"])
+except Exception:
+    pass
+
 import db
 import panels
 from config import BRAND

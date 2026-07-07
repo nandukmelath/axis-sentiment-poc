@@ -62,6 +62,9 @@ pip install psycopg2-binary
 export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://axis:axis@localhost:5432/airflow"
 export AIRFLOW__CORE__EXECUTOR=LocalExecutor AIRFLOW__CORE__PARALLELISM=16
 export DATABASE_URL="postgresql+psycopg2://axis:axis@localhost:5432/axis"    # tasks use PG too
+# Route LLM through FreeLLMAPI. The server runs on Windows; from WSL use the Windows host IP
+# (NOT localhost). Find it: `ip route | grep default` or the 172.x.x.1 gateway.
+export FREELLM_BASE_URL="http://172.22.112.1:3001/v1"
 airflow db migrate && airflow standalone
 ```
 Run the suite on Postgres (dual-dialect): `TEST_DATABASE_URL="postgresql+psycopg2://axis:axis@localhost:5432/axis_test" pytest`.

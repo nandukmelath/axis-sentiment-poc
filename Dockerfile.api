@@ -1,0 +1,15 @@
+# Backend API image — FastAPI (api.main:app). Deploy on Koyeb / Render / HF Spaces (free).
+# Reads the warehouse over DATABASE_URL (Neon). Host injects $PORT.
+FROM python:3.12-slim
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
+
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
+
+COPY . .
+
+ENV PORT=8000
+EXPOSE 8000
+# ${PORT} lets Koyeb/Render/HF override the listen port at runtime.
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
