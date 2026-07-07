@@ -121,7 +121,25 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 _FETCH_MULT = float(os.getenv("FETCH_MULT", "1"))
 FETCH_LIMITS = {k: max(v, int(v * _FETCH_MULT)) for k, v in
                 {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 30,
-                 "bluesky": 25, "hackernews": 30, "mastodon": 20}.items()}
+                 "bluesky": 25, "hackernews": 30, "mastodon": 20,
+                 "technofino": 60, "rssnews": 40, "gdelt": 30}.items()}
+
+# ---- keyless source packs (endpoints verified live 2026-07-07) ----
+# Technofino deep-crawl: how many fresh Axis threads to open + replies per thread.
+TECHNOFINO_DEEP_THREADS = int(os.getenv("TECHNOFINO_DEEP_THREADS", "8"))
+TECHNOFINO_REPLIES = int(os.getenv("TECHNOFINO_REPLIES", "6"))
+# Direct-outlet banking-desk RSS (Business-Standard excluded: hard 403 bot wall;
+# Moneycontrol excluded: feed frozen at Apr-2024 — the staleness guard would drop it anyway).
+RSS_NEWS_FEEDS = [
+    ("EconomicTimes-Banking", "https://economictimes.indiatimes.com/industry/banking/finance/banking/rssfeeds/13358319.cms"),
+    ("ETBFSI-Recent",         "https://bfsi.economictimes.indiatimes.com/rss/recentstories"),
+    ("ETBFSI-Top",            "https://bfsi.economictimes.indiatimes.com/rss/topstories"),
+    ("HinduBusinessLine-Banking", "https://www.thehindubusinessline.com/money-and-banking/feeder/default.rss"),
+    ("Livemint-Money",        "https://www.livemint.com/rss/money"),
+]
+RSS_NEWS_MAX_AGE_DAYS = int(os.getenv("RSS_NEWS_MAX_AGE_DAYS", "30"))
+# GDELT: brand-scoped queries (>=6s apart — API enforces 1 req/5s).
+GDELT_QUERIES = ['"Axis Bank" sourcecountry:IN', '"Axis Bank"']
 
 def validate():
     """Startup sanity check — returns a list of human-readable config warnings (never raises)."""

@@ -61,11 +61,21 @@ Per source:
 | Source | Needs | Status |
 |---|---|---|
 | News (Google News RSS) | nothing | ✅ live |
+| Direct banking-desk RSS pack (ET/ETBFSI/HBL/Mint) | nothing | ✅ live |
+| **Technofino forum** (Axis CC complaint epicenter — threads + replies) | nothing | ✅ live |
+| GDELT global news index (regional/vernacular outlets) | nothing (1 req/6s throttle) | ✅ live |
 | Google Play reviews | nothing | ✅ live |
-| Apple App Store | set `APPSTORE_APP_ID` (numeric iOS id) | ready |
-| Reddit | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` (free "script" app) | ready |
+| Apple App Store | nothing (id auto-resolved) | ✅ live |
+| Reddit | nothing (**keyless RSS fallback**); keys unlock scores + deeper comments | ✅ live |
+| Hacker News (Algolia) | nothing | ✅ live |
+| Mastodon | nothing | ✅ live |
 | YouTube | `YOUTUBE_API_KEY` (free) | ready |
-| **X / Twitter** | **CSV import** (free live scraping is dead) | ✅ via CSV |
+| **X / Twitter** | ScrapeBadger key (paid) or **CSV import** | ✅ via CSV |
+
+Keyless-source facts learned live (2026-07-07): Reddit 403s `.json` for scripts but serves
+`.rss` with a browser UA; Moneycontrol RSS is frozen at Apr-2024 (staleness guard drops it);
+Business-Standard RSS is behind a hard 403 bot wall; ConsumerComplaints.in + MouthShut are
+Cloudflare-walled (would need a real browser — not worth it); GDELT enforces 1 request/5s.
 
 ### X / Twitter — CSV import (default, `TWITTER_MODE=csv`)
 Free live X scraping is non-functional in 2026 (Nitter dead, X needs login). So drop tweets into **`fetch/twitter_import.csv`**:

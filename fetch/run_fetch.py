@@ -8,18 +8,21 @@ import datetime
 import pandas as pd
 from db import init_db, upsert_posts
 from fetch import (news, playstore, appstore, reddit, youtube, twitter, scrapebadger,
-                   hackernews, mastodon_search)
+                   hackernews, mastodon_search, technofino, rss_news, gdelt)
 
 SOURCES = [
     ("news", news.fetch),
     ("play", playstore.fetch),
     ("appstore", appstore.fetch),
-    ("reddit", reddit.fetch),
+    ("reddit", reddit.fetch),               # PRAW when keyed; keyless RSS fallback otherwise
     ("youtube", youtube.fetch),
     ("scrapebadger", scrapebadger.fetch),   # X via API (primary)
     ("twitter", twitter.fetch),             # X via CSV (fallback)
     ("hackernews", hackernews.fetch),       # FREE Algolia (no key)
     ("mastodon", mastodon_search.fetch),    # FREE public hashtag timelines (no auth)
+    ("technofino", technofino.fetch),       # FREE forum RSS+crawl — Axis CC complaint epicenter
+    ("rssnews", rss_news.fetch),            # FREE direct-outlet banking-desk RSS pack
+    ("gdelt", gdelt.fetch),                 # FREE global news index (throttled 1 req/6s)
 ]
 # Note: fetch/bluesky_search.py exists but public.api.bsky.app now 403s batch search —
 # the working keyless Bluesky path is the Jetstream firehose in stream/bluesky.py.

@@ -11,6 +11,7 @@ praw>=7.7
 google-play-scraper>=1.2
 feedparser>=6.0
 google-api-python-client>=2.100
+beautifulsoup4>=4.12   # keyless HTML/RSS sources (technofino, reddit-RSS, rssnews)
 
 # --- dashboard (Phase 4) ---
 streamlit>=1.30
