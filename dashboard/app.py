@@ -72,7 +72,7 @@ def fresh():
                  LEFT JOIN clean_posts cp ON a.source_id = cp.source_id""")
     c = db.df("SELECT * FROM clusters ORDER BY size DESC")
     if not a.empty:
-        a["created_dt"] = pd.to_datetime(a["created_at"], errors="coerce", utc=True)
+        a["created_dt"] = pd.to_datetime(a["created_at"], errors="coerce", utc=True, format="mixed")
         a["date"] = a["created_dt"].dt.date
     return a, c
 
@@ -145,10 +145,10 @@ _rb[2].caption("Pick a window → fetches Axis mentions for it → DB → the bo
 # ---------------- sidebar: role selector + filters ----------------
 _a0, _ = fresh()
 ROLE_TABS = {
-    "Exec": ["🛰️ War-Room", "🏁 Competitor SOV", "📦 Products", "📈 Trends", "🔮 Forecast", "⚠️ Churn", "🗞️ Digest"],
+    "Exec": ["🛰️ War-Room", "🏁 Competitor SOV", "📡 Channels", "📦 Products", "📈 Trends", "🔮 Forecast", "⚠️ Churn", "🗞️ Digest"],
     "RM": ["👤 RM Cockpit", "👥 Customer 360", "⚠️ Churn", "✍️ Drafts"],
     "Ops": ["🛠️ Admin", "🧭 Team Queues", "🛡️ Fraud", "🔔 Alerts", "✍️ Drafts", "💰 Cost/Ops", "📉 Quality"],
-    "Analyst": ["📈 Trends", "🔮 Forecast", "🗺️ Geo", "🏷️ Entities", "📢 Influencers", "🔬 Root-cause",
+    "Analyst": ["📡 Channels", "📈 Trends", "🔮 Forecast", "🗺️ Geo", "🏷️ Entities", "📢 Influencers", "🔬 Root-cause",
                 "🗣️ Languages", "📉 Quality", "📦 Products"],
     "Admin (all)": None,   # all tabs
 }
@@ -384,6 +384,7 @@ TAB_FUNCS = {
     "👤 RM Cockpit": rm_cockpit,
     "🛠️ Admin": admin_analytics,
     "🏁 Competitor SOV": panels.competitor_sov,
+    "📡 Channels": panels.channels,
     "📦 Products": panels.product_scorecards,
     "📈 Trends": panels.trends_panel,
     "🗺️ Geo": panels.geo_panel,

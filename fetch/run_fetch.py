@@ -39,7 +39,7 @@ def cutoff(window):
 def _within(created_at, cut):
     if cut is None:
         return True
-    ts = pd.to_datetime(created_at, errors="coerce", utc=True)
+    ts = pd.to_datetime(created_at, errors="coerce", utc=True, format="mixed")
     return pd.notna(ts) and ts >= cut
 
 

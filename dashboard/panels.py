@@ -44,6 +44,37 @@ def competitor_sov():
                  width="stretch", hide_index=True)
 
 
+# ---------------------------------------------------------------- Channels (source-type)
+def channels():
+    st.subheader("📡 Channels — where the customer voice comes from")
+    st.caption("Ingest channels typed by medium. New keyless veins: Technofino forum · GDELT · banking-desk RSS.")
+    m = _safe("SELECT * FROM mart_channel ORDER BY mentions DESC")
+    if m.empty:
+        return _empty("Run `python -m warehouse.build --step star`.")
+    c = st.columns([0.5, 0.5])
+    with c[0]:
+        fig = px.bar(m, x="source_type", y="mentions", color="pct_negative", text="mentions",
+                     color_continuous_scale=["#2E8B57", "#7F8C8D", "#C0392B"], range_color=[0, 50])
+        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=320, xaxis_title="",
+                          yaxis_title="mentions", coloraxis_colorbar_title="% neg")
+        st.plotly_chart(fig, width="stretch")
+    with c[1]:
+        d = _safe("SELECT full_date, source_type, mentions FROM vw_daily_sentiment")
+        if not d.empty:
+            agg = (d.dropna(subset=["full_date"]).groupby(["full_date", "source_type"])["mentions"]
+                   .sum().reset_index())
+            recent = sorted(agg["full_date"].unique())[-30:]        # last ~30 dated days, dialect-safe
+            agg = agg[agg["full_date"].isin(recent)]
+            fig2 = px.area(agg, x="full_date", y="mentions", color="source_type")
+            fig2.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=320, xaxis_title="",
+                               yaxis_title="mentions/day", legend_title="")
+            st.plotly_chart(fig2, width="stretch")
+    st.dataframe(m[["source_type", "mentions", "pct_negative", "avg_score", "complaints",
+                    "fraud_ct", "top_team"]], width="stretch", hide_index=True)
+    st.caption("**Read:** social carries the most complaints; reviews route to app-engineering; "
+               "the Technofino forum is the credit-card devaluation vein; news is corporate/PR-toned.")
+
+
 # ---------------------------------------------------------------- Product scorecards
 def product_scorecards():
     st.subheader("📦 Product Scorecards")

@@ -85,7 +85,7 @@ def build_forecast(horizon=3):
     db.execute("DELETE FROM mart_forecast")
     if d.empty:
         return 0
-    d["day"] = pd.to_datetime(d["created_at"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+    d["day"] = db.parse_dt(d["created_at"]).dt.strftime("%Y-%m-%d")
     d = d.dropna(subset=["day"])
     d["category"] = d["rbi_category"].fillna("not_applicable")
     rows = []

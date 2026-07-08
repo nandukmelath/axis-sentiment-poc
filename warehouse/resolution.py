@@ -39,8 +39,8 @@ def _rtype(text):
 
 def _hours_between(a, b):
     try:
-        ta = pd.to_datetime(a, utc=True)
-        tb = pd.to_datetime(b, utc=True)
+        ta = pd.to_datetime(a, utc=True, format="mixed")
+        tb = pd.to_datetime(b, utc=True, format="mixed")
         return (tb - ta).total_seconds() / 3600.0
     except Exception:
         return None

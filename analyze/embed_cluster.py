@@ -67,7 +67,7 @@ def main():
     print(f"found {len(set(labels))} issue clusters (distance<{CLUSTER_DISTANCE}).")
 
     # reference 'now' = latest post time, so emerging works on static seed data too
-    ts = pd.to_datetime(data["created_at"], errors="coerce", utc=True)
+    ts = pd.to_datetime(data["created_at"], errors="coerce", utc=True, format="mixed")
     ref = ts.max()
     recent_cut = ref - pd.Timedelta(hours=24) if pd.notna(ref) else None
 

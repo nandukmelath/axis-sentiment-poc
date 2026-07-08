@@ -27,7 +27,9 @@ def fresh_db():
     # drop + recreate the tables we exercise so tests are independent
     with db.get_engine().begin() as c:
         from sqlalchemy import text
-        c.execute(text("DROP VIEW IF EXISTS scored_posts"))   # PG blocks dropping tables it depends on
+        # views must go first — PG blocks dropping any table a view depends on
+        for v in ["scored_posts", "vw_mention", "vw_daily_sentiment"]:
+            c.execute(text(f"DROP VIEW IF EXISTS {v}"))
         for t in ["raw_posts", "analysis", "clusters", "clean_posts", "dim_author", "dim_customer",
                   "dim_rm", "dim_product", "bridge_handle_customer", "fact_mention",
                   "fact_aspect_sentiment", "fact_interaction", "mart_rm_enablement",
@@ -36,7 +38,8 @@ def fresh_db():
                   "mart_trends", "mart_geo", "mart_competitor_sov", "competitor_posts",
                   "reply_drafts", "alerts", "audit_log",
                   "mart_churn_risk", "mart_forecast", "mart_entities", "translations",
-                  "eval_history", "run_metrics"]:
+                  "eval_history", "run_metrics",
+                  "dim_date", "dim_source", "dim_team", "dim_category", "fact_daily", "mart_channel"]:
             c.execute(text(f"DROP TABLE IF EXISTS {t}"))
     build.ensure_tables()
     from analytics import features

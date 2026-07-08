@@ -107,6 +107,8 @@ IDX = [
 def ensure_tables():
     db.init_db()          # silver tables + migrations + indexes + scored_posts view
     db.executescript(DDL + IDX)
+    from warehouse import star
+    star.ensure()         # conformed dims + fact_mention.date_key/source_key + star indexes
 
 
 def _tier(reach):
@@ -196,7 +198,7 @@ def build_facts():
     akey = db.df("SELECT author, author_key FROM dim_author WHERE is_current = 1")
     amap = dict(zip(akey["author"], akey["author_key"])) if not akey.empty else {}
 
-    m["created_date"] = pd.to_datetime(m["created_at"], errors="coerce", utc=True).dt.strftime("%Y-%m-%d")
+    m["created_date"] = db.parse_dt(m["created_at"]).dt.strftime("%Y-%m-%d")
     m["author_key"] = m["author"].map(amap)
     m["customer_key"] = m["author"].map(bmap)
 
@@ -363,12 +365,15 @@ def main(step="all"):
         resolution.build_interactions()
     if step in ("all", "marts"):
         build_marts()
+    if step in ("all", "star"):
+        from warehouse import star
+        star.build_all()      # conformed dims + fact keys + fact_daily + mart_channel + views
     print(f"warehouse step '{step}' complete.")
 
 
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--step", choices=["all", "dims", "facts", "resolution", "marts"], default="all")
+    ap.add_argument("--step", choices=["all", "dims", "facts", "resolution", "marts", "star"], default="all")
     a = ap.parse_args()
     main(a.step)

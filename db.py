@@ -91,6 +91,15 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
+def parse_dt(s):
+    """Robust UTC datetime parse tolerant of the MIXED formats our sources emit
+    (ISO w/ offset, RFC-822 'Mon, 29 Jun 2026 ...', date-only). Accepts a Series or a
+    scalar; unparseable -> NaT. Without format='mixed', pandas 2.x infers ONE format from
+    the first row and silently coerces every other format to NaT (this NULLed ~87% of
+    created_date and broke trends/forecast/windowing)."""
+    return pd.to_datetime(s, errors="coerce", utc=True, format="mixed")
+
+
 def _existing_cols(table):
     if DIALECT == "sqlite":
         return set(df(f"PRAGMA table_info({table})")["name"])

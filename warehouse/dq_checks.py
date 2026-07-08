@@ -58,6 +58,19 @@ def run():
     kpi = _n("SELECT COUNT(*) n FROM mart_kpis")
     chk("mart_kpis has exactly one row", kpi == 1, f"{kpi} rows")
 
+    # ---- star-layer integrity (guards the mixed-date fix + conformed model) ----
+    dated = _n("SELECT COUNT(*) n FROM fact_mention WHERE created_date IS NOT NULL")
+    chk("fact_mention created_date >= 95% (mixed-date parse)", dated >= 0.95 * fm if fm else True,
+        f"{dated}/{fm} dated")
+
+    dorphan = _n("""SELECT COUNT(*) n FROM fact_mention f
+                    LEFT JOIN dim_date d ON f.date_key = d.date_key
+                    WHERE f.date_key IS NOT NULL AND d.date_key IS NULL""")
+    chk("dim_date covers all fact date_keys", dorphan == 0, f"{dorphan} uncovered")
+
+    fd = _n("SELECT COALESCE(SUM(mentions),0) n FROM fact_daily")
+    chk("fact_daily reconciles to dated facts", fd == dated, f"fact_daily={fd} vs dated={dated}")
+
     return checks
 
 
