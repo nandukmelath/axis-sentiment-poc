@@ -49,7 +49,9 @@ def _fetch_rss():
 
     q = " OR ".join(f'"{a}"' if " " in a else a for a in dict.fromkeys(
         a.lstrip("@#") for a in _ALIASES))
-    per_sub = 10
+    # scale with FETCH_LIMITS (env FETCH_MULT) like the PRAW path, so a max-harvest run
+    # actually pulls more from the keyless Reddit path too (search.rss still caps ~25/page).
+    per_sub = max(10, FETCH_LIMITS.get("reddit", 40) // max(1, len(SUBREDDITS)))
     seen, out = set(), []
 
     throttled = 0

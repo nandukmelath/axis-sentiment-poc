@@ -18,12 +18,20 @@ import argparse
 import hashlib
 import re
 
+import pandas as pd
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
 import db
 import config
 from analyze import pii
+
+
+def _ts_key(r):
+    """Sortable ns timestamp tolerant of mixed date formats; unknown dates sort LAST so a
+    row with no parseable date is never chosen as the canonical."""
+    t = db.parse_dt(r.get("created_at"))
+    return t.value if pd.notna(t) else 2 ** 63 - 1
 
 URL_RE = re.compile(r"https?://\S+")
 WS_RE = re.compile(r"\s+")
@@ -51,12 +59,16 @@ def _clean(row):
     return row
 
 
-def _mark_dups(kv):
-    """Within one text_hash group, earliest post is canonical; the rest are duplicates."""
-    _, rows = kv
-    rows = sorted(rows, key=lambda r: r.get("created_at") or "")
+def _mark_dups(kv, seen_hashes=frozenset()):
+    """Earliest post in a text_hash group is canonical; rest are dups. STATEFUL across
+    incremental runs: if a canonical for this hash already exists in clean_posts (seen_hashes),
+    the whole incoming group is marked duplicate — otherwise each run would mint a new canonical
+    for the same text. Sort by real parsed time (mixed formats) so 'earliest' is correct."""
+    h, rows = kv
+    rows = sorted(rows, key=_ts_key)
+    already = h in seen_hashes
     for i, r in enumerate(rows):
-        r["is_duplicate"] = 0 if i == 0 else 1
+        r["is_duplicate"] = 1 if (already or i > 0) else 0
         yield r
 
 
@@ -118,6 +130,9 @@ def run(runner=None, limit=None, all_posts=False):
         print("transform: nothing new to transform")
         return 0
     runner = runner or config.BEAM_RUNNER
+    # canonical hashes already in clean_posts, so an incremental batch doesn't mint a 2nd canonical
+    seen = set(db.df("SELECT DISTINCT text_hash FROM clean_posts WHERE is_duplicate=0")["text_hash"]) \
+        if not all_posts else set()
     print(f"Beam transform [{runner}] on {len(rows)} posts ...")
     opts = PipelineOptions(flags=[], runner=runner)   # flags=[] so Beam ignores our argparse args
     with beam.Pipeline(options=opts) as p:
@@ -126,7 +141,7 @@ def run(runner=None, limit=None, all_posts=False):
          | "Clean" >> beam.Map(_clean)
          | "KeyByHash" >> beam.Map(lambda r: (r["text_hash"], r))
          | "GroupDup" >> beam.GroupByKey()
-         | "MarkDup" >> beam.FlatMap(_mark_dups)
+         | "MarkDup" >> beam.FlatMap(_mark_dups, seen_hashes=seen)
          | "Enrich" >> beam.Map(_enrich)
          | "Write" >> beam.ParDo(WriteCleanPosts()))
     # stats

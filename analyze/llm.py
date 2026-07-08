@@ -41,7 +41,8 @@ def generate_text(prompt, model=None):
         try:
             if prov == "gemini":
                 from analyze.gemini_client import generate_text as f
-                return f(prompt)
+                # forward the model override (e.g. BRIEF_MODEL) just like the openai_compat branch
+                return f(prompt, model=(model if prov == LLM_PROVIDER else None))
             if prov == "ollama":
                 from analyze.ollama_client import generate_text as f
                 return f(prompt)

@@ -142,12 +142,18 @@ def analyze_batch(posts, provider=None):
             data = _loads(resp.choices[0].message.content)
             items = _items(data)
             out = []
+            # Positional fallback is only safe when the model returned exactly one item per
+            # input post. If it dropped/merged/reordered items, an item that omits source_id
+            # would be mis-stamped onto the wrong post (bank-triage hazard) — skip those.
+            aligned = len(items) == len(posts)
             for i, d in enumerate(items):
                 if not isinstance(d, dict):
                     continue
-                fallback = posts[i]["source_id"] if i < len(posts) else ""
+                sid = d.get("source_id") or (posts[i]["source_id"] if (aligned and i < len(posts)) else "")
+                if not sid:
+                    continue
                 try:
-                    out.append(_coerce(d, fallback))
+                    out.append(_coerce(d, sid))
                 except Exception:
                     pass
             return out

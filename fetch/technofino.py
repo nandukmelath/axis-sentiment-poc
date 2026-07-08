@@ -11,7 +11,7 @@ Keyless, two tiers (endpoints + selectors verified live 2026-07-07):
 robots.txt: generic UA allowed; Content-Signal ai-train=no (we only *reference* content
 for sentiment — no model training). Throttled ~2.5s/page to stay polite under Cloudflare.
 """
-import re, time, datetime
+import re, time, datetime, hashlib
 import feedparser
 from bs4 import BeautifulSoup
 from config import FETCH_LIMITS, TECHNOFINO_DEEP_THREADS, TECHNOFINO_REPLIES
@@ -85,7 +85,10 @@ def _crawl_replies(thread_url, tid, limit):
         pid = (art.get("id") or "").replace("js-post-", "")
         t = art.select_one("time[itemprop=datePublished]")
         out.append(dict(
-            source_id=f"technofino:p_{pid or hash(text) & 0xffffffff}", source="technofino",
+            # stable digest fallback (builtin hash() is per-process salted -> would defeat
+            # INSERT OR IGNORE dedup, re-inserting the same reply every run). Matches other fetchers.
+            source_id=f"technofino:p_{pid or hashlib.md5(text.encode('utf-8'), usedforsecurity=False).hexdigest()[:12]}",
+            source="technofino",
             author=art.get("data-author", ""), author_name=art.get("data-author", ""),
             text=text[:4000], url=thread_url,
             created_at=(t.get("datetime") if t else ""), engagement=_reaction_count(art),

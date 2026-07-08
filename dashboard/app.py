@@ -85,7 +85,7 @@ def apply_filters(a):
     if ss.get("f_urg"):  fa = fa[fa["urgency"].isin(ss["f_urg"])]
     if ss.get("f_team"): fa = fa[fa["recommended_team"].isin(ss["f_team"])]
     if ss.get("f_lang") and "lang" in fa: fa = fa[fa["lang"].isin(ss["f_lang"])]
-    if ss.get("f_q"):    fa = fa[fa["text"].str.contains(ss["f_q"], case=False, na=False)]
+    if ss.get("f_q"):    fa = fa[fa["text"].str.contains(ss["f_q"], case=False, na=False, regex=False)]  # literal — a bare '(' or '*' would crash the regex engine
     if ss.get("f_flags"): fa = fa[(fa["fraud_signal"] == 1) | (fa["churn_risk"] == 1)]
     delta = {"1 hour": datetime.timedelta(hours=1), "1 day": datetime.timedelta(days=1),
              "1 month": datetime.timedelta(days=30)}.get(ss.get("t_window"))

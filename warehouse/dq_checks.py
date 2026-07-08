@@ -1,5 +1,11 @@
-"""Data-quality gate — runs after the warehouse build. Exits non-zero (fails the Airflow
-task) if any hard check fails, so bad data can't silently reach the dashboard / marts.
+"""Data-quality gate — runs after the warehouse build and exits non-zero (failing the
+GitHub Actions / Airflow task) if any hard check fails.
+
+NOTE: this is POST-HOC detection, not a pre-commit gate — the build writes marts to the
+live DB *before* this runs, so a failed check turns the run red and pages ops but does not
+prevent a bad refresh from briefly reaching the dashboard. A true gate would build into
+stg_* tables and atomic-swap only on PASS (tracked as a follow-up); for the POC, Neon PITR /
+branching is the DR backstop.
 
 Run:  python -m warehouse.dq_checks
 """
@@ -68,8 +74,11 @@ def run():
                     WHERE f.date_key IS NOT NULL AND d.date_key IS NULL""")
     chk("dim_date covers all fact date_keys", dorphan == 0, f"{dorphan} uncovered")
 
+    # reconcile fact_daily against date_key (BOTH derive from the star step) so the check is
+    # self-consistent whether or not star.build_all() ran: 0==0 before it, N==N after.
+    dk = _n("SELECT COUNT(*) n FROM fact_mention WHERE date_key IS NOT NULL")
     fd = _n("SELECT COALESCE(SUM(mentions),0) n FROM fact_daily")
-    chk("fact_daily reconciles to dated facts", fd == dated, f"fact_daily={fd} vs dated={dated}")
+    chk("fact_daily reconciles to keyed facts", fd == dk, f"fact_daily={fd} vs date_key={dk}")
 
     return checks
 

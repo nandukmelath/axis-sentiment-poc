@@ -140,8 +140,7 @@ def build_dim_date():
         "day_of_week": d.dayofweek, "day_name": d.strftime("%a"),
         "is_weekend": 1 if d.dayofweek >= 5 else 0,
     } for d in rng]
-    db.execute("DELETE FROM dim_date")
-    db.insert_rows("dim_date", rows, DIM_DATE_COLS)
+    db.replace_rows("dim_date", rows, DIM_DATE_COLS)     # atomic — no empty-table gap for readers
     return len(rows)
 
 
@@ -155,26 +154,26 @@ def backfill_fact_keys():
 def build_fact_daily():
     fm = db.df("""SELECT date_key, source_key, sentiment, score, intent, fraud_signal, churn_risk
                   FROM fact_mention WHERE date_key IS NOT NULL""")
-    db.execute("DELETE FROM fact_daily")
     if fm.empty:
+        db.execute("DELETE FROM fact_daily")
         print("fact_daily: no dated facts")
         return 0
     fm["neg"] = fm["sentiment"].isin(["negative", "mixed"]).astype(int)
     fm["cmp"] = (fm["intent"] == "complaint").astype(int)
-    g = fm.groupby(["date_key", "source_key", "sentiment"]).agg(
+    g = fm.groupby(["date_key", "source_key", "sentiment"], dropna=False).agg(
         mentions=("score", "size"), avg_score=("score", "mean"),
         negatives=("neg", "sum"), complaints=("cmp", "sum"),
         fraud_ct=("fraud_signal", "sum"), churn_ct=("churn_risk", "sum")).reset_index()
     g["avg_score"] = g["avg_score"].round(3)
-    db.insert_rows("fact_daily", g.to_dict("records"), FACT_DAILY_COLS)
+    db.replace_rows("fact_daily", g.to_dict("records"), FACT_DAILY_COLS)   # atomic
     return len(g)
 
 
 def build_mart_channel():
     d = db.df("""SELECT s.source_type, f.sentiment, f.score, f.intent, f.fraud_signal, f.recommended_team
                  FROM fact_mention f JOIN dim_source s ON f.source_key = s.source_key""")
-    db.execute("DELETE FROM mart_channel")
     if d.empty:
+        db.execute("DELETE FROM mart_channel")
         return 0
     ts = db.now()
     rows = []
@@ -189,7 +188,7 @@ def build_mart_channel():
             "top_team": teams.mode().iloc[0] if not teams.mode().empty else "none",
             "updated_at": ts,
         })
-    db.insert_rows("mart_channel", rows, MART_CHANNEL_COLS)
+    db.replace_rows("mart_channel", rows, MART_CHANNEL_COLS)   # atomic
     return len(rows)
 
 
@@ -223,9 +222,10 @@ VIEWS = {
 
 
 def create_views():
+    # DROP+CREATE per view in ONE transaction (db.executescript) so a concurrent reader never
+    # hits the window where the view momentarily doesn't exist ('relation does not exist').
     for name, sql in VIEWS.items():
-        db.execute(f"DROP VIEW IF EXISTS {name}")          # portable: no CREATE-OR-REPLACE in SQLite
-        db.execute(f"CREATE VIEW {name} AS {sql}")
+        db.executescript([f"DROP VIEW IF EXISTS {name}", f"CREATE VIEW {name} AS {sql}"])
 
 
 def build_all():

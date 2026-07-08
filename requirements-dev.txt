@@ -1,11 +1,6 @@
-# Focused deps to run the test suite (keyless, offline) — used by CI.
-pandas>=2.0
-numpy>=1.26
-scikit-learn>=1.3
-SQLAlchemy>=2.0
-pydantic>=2.6
-vaderSentiment>=3.3
-python-dotenv>=1.0
-apache-beam>=2.60
-openai>=1.30
+# Test-suite deps. Pull in the FULL runtime so every module the tests import (fetch/*, transform,
+# analyze, warehouse, dashboard) resolves on a clean install, then add the API + test-only extras.
+-r requirements.txt
+fastapi>=0.110          # api/main.py — exercised by the API tests (TestClient)
+httpx>=0.27             # starlette TestClient transport (also pulled by openai)
 pytest>=8.0

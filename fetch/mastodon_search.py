@@ -2,6 +2,7 @@
 import re
 import requests
 from config import MASTODON_INSTANCE, MASTODON_TAGS, FETCH_LIMITS
+from fetch.webutil import brand_match
 
 TAG_RE = re.compile(r"<[^>]+>")
 
@@ -24,12 +25,17 @@ def fetch():
             print(f"  [mastodon] error: {str(e)[:80]}")
             continue
         for s in statuses:
+            body = _text(s.get("content", ""))
+            # the bare '#Axis' tag pulls off-brand content (WWII 'Axis powers' memes etc.) — gate on
+            # a real Axis-Bank alias match, mirroring the news/forum fetchers. Nothing else filters here.
+            if not brand_match(body):
+                continue
             acct = (s.get("account") or {}).get("acct", "")
             sid = "mastodon:" + str(s.get("id"))
             rows[sid] = dict(
                 source_id=sid, source="mastodon",
                 author=("@" + acct) if acct else "", author_name=(s.get("account") or {}).get("display_name"),
-                text=_text(s.get("content", "")), url=s.get("url", ""),
+                text=body, url=s.get("url", ""),
                 created_at=s.get("created_at", ""),
                 engagement=int(s.get("favourites_count", 0) or 0),
                 reply_count=int(s.get("replies_count", 0) or 0),

@@ -13,6 +13,13 @@ def _retry_secs(msg: str, attempt: int) -> float:
     server = float(m.group(1)) if m else 0.0
     return min(max(server, 2 ** attempt) + 1.5, 65.0)
 
+
+def _is_rate(e) -> bool:
+    """Rate/daily-cap error — fail over FAST instead of burning MAX_RETRIES (~38s+) before
+    the llm.py dispatcher can try the next provider."""
+    s = str(e).lower()
+    return "429" in s or "rate limit" in s or "quota" in s or "resource_exhausted" in s
+
 from config import GEMINI_MODEL, EMBED_MODEL, MAX_RETRIES
 from analyze.schema import PostAnalysis
 from analyze.prompt import SYSTEM, USER_TEMPLATE
@@ -55,6 +62,10 @@ def analyze_batch(posts: List[dict]) -> List[PostAnalysis]:
             return items
         except Exception as e:  # noqa
             last = e
+            if _is_rate(e) and attempt >= 1:      # capped tier — fail over fast (no 5x/38s stall)
+                break
+            if attempt >= MAX_RETRIES - 1:
+                break                              # last attempt: don't sleep before raising
             wait = _retry_secs(str(e), attempt)
             print(f"  gemini retry {attempt+1}/{MAX_RETRIES} in {wait:.0f}s ({type(e).__name__}: {str(e)[:100]})")
             time.sleep(wait)
@@ -71,6 +82,10 @@ def generate_text(prompt: str, model: str = None) -> str:
             return client().models.generate_content(model=model, contents=prompt).text
         except Exception as e:  # noqa
             last = e
+            if _is_rate(e) and attempt >= 1:
+                break
+            if attempt >= MAX_RETRIES - 1:
+                break
             wait = _retry_secs(str(e), attempt)
             print(f"  gemini retry {attempt+1}/{MAX_RETRIES} in {wait:.0f}s ({type(e).__name__})")
             time.sleep(wait)

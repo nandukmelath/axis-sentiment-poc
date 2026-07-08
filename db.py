@@ -269,6 +269,20 @@ def insert_rows(table, rows, cols):
     return len(norm)
 
 
+def replace_rows(table, rows, cols):
+    """Atomic full-table refresh: DELETE + INSERT in ONE transaction, so a concurrent reader
+    (the live dashboard/API on Neon) never sees the committed-empty gap between a separate
+    DELETE-commit and INSERT-commit. No-op INSERT when rows is empty (table still cleared)."""
+    norm = [{k: _na(r.get(k)) for k in cols} for r in rows]
+    collist = ",".join(cols)
+    ph = ",".join(f":{c}" for c in cols)
+    with _engine.begin() as c:
+        c.execute(text(f"DELETE FROM {table}"))
+        if norm:
+            c.execute(text(f"INSERT INTO {table} ({collist}) VALUES ({ph})"), norm)
+    return len(norm)
+
+
 def set_masked(source_id, text_masked, pii_types):
     with _engine.begin() as c:
         c.execute(text("UPDATE analysis SET text_masked=:m, pii_types=:t WHERE source_id=:s"),

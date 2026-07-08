@@ -202,8 +202,7 @@ def build_facts():
     m["author_key"] = m["author"].map(amap)
     m["customer_key"] = m["author"].map(bmap)
 
-    db.execute("DELETE FROM fact_mention")
-    db.insert_rows("fact_mention", m.to_dict("records"), FACT_MENTION_COLS)
+    db.replace_rows("fact_mention", m.to_dict("records"), FACT_MENTION_COLS)   # atomic swap
 
     aspects = []
     for _, r in m.iterrows():
@@ -214,8 +213,7 @@ def build_facts():
                                     "sentiment": it.get("sentiment"), "evidence": (it.get("evidence") or "")[:300]})
         except Exception:
             pass
-    db.execute("DELETE FROM fact_aspect_sentiment")
-    db.insert_rows("fact_aspect_sentiment", aspects, FACT_ASPECT_COLS)
+    db.replace_rows("fact_aspect_sentiment", aspects, FACT_ASPECT_COLS)
     print(f"fact_mention: {len(m)} rows · fact_aspect_sentiment: {len(aspects)} rows")
 
 
@@ -287,8 +285,7 @@ def build_marts():
                 "talking_point": f"Lead with the {pain_area} issue ({pain}); once acknowledged, pitch {xs_prod}.",
                 "updated_at": ts,
             })
-    db.execute("DELETE FROM mart_rm_enablement")
-    db.insert_rows("mart_rm_enablement", rm_rows, MART_RM_COLS)
+    db.replace_rows("mart_rm_enablement", rm_rows, MART_RM_COLS)
 
     # ---- Admin analytics mart (follow-up bifurcation by category × team) ----
     fm = db.df("SELECT * FROM fact_mention")
@@ -328,8 +325,7 @@ def build_marts():
                 "avg_response_latency_min": round(float(g_lat.mean()), 1) if len(g_lat) else None,
                 "updated_at": ts,
             })
-    db.execute("DELETE FROM mart_admin_analytics")
-    db.insert_rows("mart_admin_analytics", admin_rows, MART_ADMIN_COLS)
+    db.replace_rows("mart_admin_analytics", admin_rows, MART_ADMIN_COLS)
 
     # ---- Headline KPIs incl. the north-star Sentiment Recovery Rate ----
     total = int(len(fm))
@@ -344,8 +340,7 @@ def build_marts():
             recovery_rate = round(100 * len(recovered) / len(responded), 1)
             med_lat = round(float(responded["response_latency_min"].dropna().median()), 1) \
                 if responded["response_latency_min"].notna().any() else None
-    db.execute("DELETE FROM mart_kpis")
-    db.insert_rows("mart_kpis", [{
+    db.replace_rows("mart_kpis", [{
         "id": 1, "total_mentions": total, "pct_negative": pct_neg, "needs_followup": needs_fu,
         "resolved_count": resolved_ct, "sentiment_recovery_rate": recovery_rate,
         "median_response_latency_min": med_lat, "updated_at": ts,

@@ -104,8 +104,7 @@ def build_interactions():
     if RESOLUTION_LLM and rows:
         _llm_refine(rows)
 
-    db.execute("DELETE FROM fact_interaction")
-    db.upsert_rows("fact_interaction", rows, "issue_id", FACT_INTERACTION_COLS)
+    db.replace_rows("fact_interaction", rows, FACT_INTERACTION_COLS)   # atomic (post-DELETE = no conflicts)
     resolved = sum(r["resolved"] for r in rows)
     print(f"fact_interaction: {len(rows)} threads · {resolved} resolved")
 

@@ -36,6 +36,11 @@ def aggregate():
     clusters = df("SELECT title, size, avg_score, top_team, recent_share FROM clusters ORDER BY size DESC LIMIT 8")
     top_neg = df("""SELECT summary, urgency, recommended_team FROM analysis
                     WHERE score < 0 ORDER BY score ASC, urgency DESC LIMIT 12""")
+    # defense-in-depth: these summaries feed a third-party LLM prompt — mask any PII that
+    # slipped through (idempotent; the cascade already masks at source).
+    if not top_neg.empty:
+        from analyze.pii import mask as _pii_mask
+        top_neg["summary"] = top_neg["summary"].map(lambda s: _pii_mask(s or "")[0])
 
     return {
         "brand": BRAND, "total": total, "sentiment": sent, "neg_pct": neg_pct,

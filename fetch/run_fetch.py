@@ -59,9 +59,11 @@ def run(only=None, window=None):
     rows = list(uniq.values())
     if cut is not None:
         rows = [r for r in rows if _within(r.get("created_at"), cut)]
-    n = upsert_posts(rows)
+    upsert_posts(rows)
+    # NOTE: this is fetched-UNIQUE this run, not newly-inserted rows — upsert dedups already-seen
+    # source_ids at the DB (INSERT OR IGNORE), and does not report the true insert delta.
     print(f"fetched {len(rows)} unique posts{' in last ' + window if window else ''} "
-          f"(INSERT OR IGNORE keeps only new ones).")
+          f"(already-seen source_ids are deduped on upsert).")
     return len(rows)
 
 

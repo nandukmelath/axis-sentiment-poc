@@ -6,13 +6,16 @@ Docs: http://localhost:8600/docs
 """
 import os
 import time
+import logging
 from collections import defaultdict, deque
 
-from fastapi import FastAPI, Header, HTTPException, Depends, Request
+from fastapi import FastAPI, Header, HTTPException, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import db
+
+log = logging.getLogger("axis_api")
 
 app = FastAPI(title="Axis Social Intelligence API", version="1.0",
               description="Read-only access to the sentiment marts.")
@@ -28,7 +31,10 @@ _hits = defaultdict(deque)
 
 @app.middleware("http")
 async def _rate_limit(request: Request, call_next):
-    ip = request.client.host if request.client else "?"
+    # behind a proxy (Koyeb/Render/HF) request.client.host is the proxy, so honor the first
+    # X-Forwarded-For hop when present (run uvicorn with --proxy-headers in prod for trust).
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = xff.split(",")[0].strip() or (request.client.host if request.client else "?")
     now = time.time()
     q = _hits[ip]
     while q and now - q[0] > 60:
@@ -36,6 +42,9 @@ async def _rate_limit(request: Request, call_next):
     if len(q) >= _RATE:
         return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
     q.append(now)
+    if len(_hits) > 4096:                    # bound memory: drop idle empty buckets
+        for k in [k for k, v in list(_hits.items()) if not v]:
+            _hits.pop(k, None)
     return await call_next(request)
 
 
@@ -51,16 +60,19 @@ def ready():
     try:
         db.df("SELECT 1 AS ok")
         return {"status": "ready", "db": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"db not ready: {str(e)[:80]}")
+    except Exception:
+        log.exception("readiness probe failed")          # detail stays server-side (no schema leak)
+        raise HTTPException(status_code=503, detail="db not ready")
 
 
 def _rows(sql, params=None):
     try:
         d = db.df(sql, params) if params else db.df(sql)
         return d.to_dict("records")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)[:150])
+    except Exception:
+        # never leak SQL / table names / driver class to clients
+        log.exception("query failed: %s", sql[:80])
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @app.get("/health")
@@ -75,7 +87,7 @@ def kpis():
 
 
 @app.get("/clusters", dependencies=[Depends(auth)])
-def clusters(limit: int = 10, offset: int = 0):
+def clusters(limit: int = Query(10, ge=1, le=1000), offset: int = Query(0, ge=0)):
     return _rows(f"SELECT title, size, top_team, recent_share, avg_score FROM clusters "
                  f"ORDER BY size DESC LIMIT {int(limit)} OFFSET {int(offset)}")
 
@@ -91,13 +103,13 @@ def alerts():
 
 
 @app.get("/churn", dependencies=[Depends(auth)])
-def churn(limit: int = 20, offset: int = 0):
+def churn(limit: int = Query(20, ge=1, le=1000), offset: int = Query(0, ge=0)):
     return _rows(f"SELECT * FROM mart_churn_risk ORDER BY churn_prob DESC "
                  f"LIMIT {int(limit)} OFFSET {int(offset)}")
 
 
 @app.get("/products", dependencies=[Depends(auth)])
-def products(limit: int = 100, offset: int = 0):
+def products(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)):
     return _rows(f"SELECT * FROM mart_product_scorecard ORDER BY mentions DESC "
                  f"LIMIT {int(limit)} OFFSET {int(offset)}")
 

@@ -6,6 +6,7 @@ posts — the ones a bank must act on.
 """
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from config import VADER_POS
+from analyze.pii import mask as _pii_mask
 
 _an = SentimentIntensityAnalyzer()
 
@@ -43,7 +44,9 @@ def fast_row(post):
         "product": "unspecified", "root_cause": "", "rbi_category": "not_applicable",
         "recommended_team": "none", "recommended_action": "", "churn_risk": 0,
         "fraud_signal": fraud, "fraud_type": "suspected" if fraud else "none", "pii_present": 0,
-        "theme": "", "summary": (post.get("text") or "")[:90], "confidence": 0.4,
+        # summary is PII-masked at source: it can reach a third-party LLM via exec_summary,
+        # and VADER-baseline rows never get re-summarised, so mask here or raw PAN/OTP/phone leaks.
+        "theme": "", "summary": _pii_mask(post.get("text") or "")[0][:90], "confidence": 0.4,
         "aspects_json": "[]", "cluster_id": None, "model": "vader-fast",
     }
 

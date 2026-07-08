@@ -39,12 +39,18 @@ def test_logging_setup_idempotent():
 
 
 def test_backup_creates_consistent_snapshot(fresh_db, tmp_path):
+    import shutil
+    import pytest
     from tools import backup
-    out = backup.backup(str(tmp_path))
     if db.DIALECT == "sqlite":
+        out = backup.backup(str(tmp_path))
+        assert out and os.path.exists(out) and os.path.getsize(out) > 0
+    elif shutil.which("pg_dump"):
+        out = backup.backup(str(tmp_path))               # real dump -> .sql file
         assert out and os.path.exists(out) and os.path.getsize(out) > 0
     else:
-        assert out is None      # Postgres path prints the pg_dump command instead of a file
+        with pytest.raises(RuntimeError):                # never a silent no-op
+            backup.backup(str(tmp_path))
 
 
 def test_api_ready(fresh_db):

@@ -1,6 +1,6 @@
 """Data-quality gate — passes on good data, flags the specific defects it should catch."""
 import db
-from warehouse import build, resolution, dq_checks
+from warehouse import build, resolution, dq_checks, star
 
 
 def _seed_good(fresh_db):
@@ -20,6 +20,7 @@ def _seed_good(fresh_db):
     build.build_facts()
     resolution.build_interactions()
     build.build_marts()
+    star.build_all()          # date_key + fact_daily, so the reconcile check is genuinely exercised
 
 
 def test_dq_passes_on_good_data(fresh_db):

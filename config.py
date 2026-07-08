@@ -48,7 +48,7 @@ TWITTER_QUERIES = ["Axis Bank", "@AxisBank"]
 # ---- extra FREE / keyless sources ----
 BLUESKY_QUERIES = ["Axis Bank", "AxisBank", "Axis Magnus"]      # public.api.bsky.app searchPosts (no auth)
 HN_QUERY = "Axis Bank"                                          # Hacker News Algolia (no key)
-MASTODON_TAGS = ["AxisBank", "Axis"]                            # public hashtag timelines (no auth)
+MASTODON_TAGS = ["AxisBank"]     # bare "#Axis" pulls off-brand (WWII 'Axis powers' memes); brand_match also gates
 APPSTORE_SEARCH = "Axis Mobile"                                # auto-resolve iOS app id when APPSTORE_APP_ID unset
 # X/Twitter ingestion mode: 'csv' (import fetch/twitter_import.csv — reliable, default),
 # 'scrape' (free Nitter scraper — usually dead in 2026), 'auto' (scrape then csv fallback).
