@@ -1,4 +1,5 @@
 # --- AI sentiment layer (needed now) ---
+# rebuild-token: 2026-07-08a  (touch to force a full Streamlit Cloud env rebuild = fresh module import)
 google-genai>=1.0.0
 pydantic>=2.6
 pandas>=2.0
