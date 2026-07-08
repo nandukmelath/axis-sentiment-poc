@@ -22,7 +22,7 @@ def test_pan_masked():
 
 def test_aadhaar_masked():
     m, t = pii.mask("aadhaar 1234 5678 9012")
-    assert "1234 5678 9012" not in m and "aadhaar" in t
+    assert "1234 5678 9012" not in m and any("aadhaar" in x for x in t)   # label: aadhaar_or_account
 
 
 def test_phone_masked_keep_last2():

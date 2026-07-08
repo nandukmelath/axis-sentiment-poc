@@ -69,7 +69,7 @@ def analyze_batch(posts: List[dict]) -> List[PostAnalysis]:
             wait = _retry_secs(str(e), attempt)
             print(f"  gemini retry {attempt+1}/{MAX_RETRIES} in {wait:.0f}s ({type(e).__name__}: {str(e)[:100]})")
             time.sleep(wait)
-    raise RuntimeError(f"analyze_batch failed after {MAX_RETRIES} retries: {last}")
+    raise RuntimeError(f"gemini analyze_batch failed (rate/quota fast-fail or {MAX_RETRIES} retries): {last}")
 
 
 def generate_text(prompt: str, model: str = None) -> str:
@@ -89,7 +89,7 @@ def generate_text(prompt: str, model: str = None) -> str:
             wait = _retry_secs(str(e), attempt)
             print(f"  gemini retry {attempt+1}/{MAX_RETRIES} in {wait:.0f}s ({type(e).__name__})")
             time.sleep(wait)
-    raise RuntimeError(f"generate_text failed after {MAX_RETRIES} retries: {last}")
+    raise RuntimeError(f"gemini generate_text failed (rate/quota fast-fail or {MAX_RETRIES} retries): {last}")
 
 
 def verify_fraud(text: str) -> bool:

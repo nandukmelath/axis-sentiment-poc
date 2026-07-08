@@ -3,6 +3,7 @@ import hashlib
 import urllib.parse
 import feedparser
 from config import NEWS_QUERIES, FETCH_LIMITS
+from fetch.webutil import brand_match
 
 RSS = "https://news.google.com/rss/search?q={q}&hl=en-IN&gl=IN&ceid=IN:en"
 
@@ -15,6 +16,8 @@ def fetch():
         d = feedparser.parse(RSS.format(q=q))
         for e in d.entries[:per]:
             text = f"{e.get('title','')}. {e.get('summary','')}"
+            if not brand_match(text):        # Google News fuzzy-matches; drop off-brand hits
+                continue
             sid = "news:" + hashlib.md5(e.get("link", text).encode(), usedforsecurity=False).hexdigest()[:12]
             rows[sid] = dict(
                 source_id=sid, source="news", author=e.get("source", {}).get("title", "news"),

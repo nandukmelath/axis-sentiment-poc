@@ -152,6 +152,15 @@ def validate():
     if not any(os.getenv(k) for k in ("SCRAPEBADGER_API_KEY", "REDDIT_CLIENT_ID", "YOUTUBE_API_KEY")):
         warns.append("No keyed sources configured — running on keyless sources only "
                      "(news/play/appstore/mastodon/hackernews).")
+    # If freellmapi is the primary, probe it so operators know when they're silently on fallbacks.
+    if p == "freellmapi":
+        base = OPENAI_COMPAT["freellmapi"][0]
+        try:
+            import urllib.request
+            urllib.request.urlopen(base.rsplit("/v1", 1)[0] + "/api/ping", timeout=2)  # nosec B310 — configured host
+        except Exception:
+            warns.append(f"LLM_PROVIDER=freellmapi but {base} is unreachable — classify will fail over "
+                         "to LLM_FALLBACKS. Start the aggregator or set LLM_PROVIDER=groq.")
     return warns
 
 

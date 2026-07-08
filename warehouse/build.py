@@ -159,8 +159,18 @@ def build_dim_author():
     curmap = {r["author"]: r for _, r in cur.iterrows()} if not cur.empty else {}
     track = ["author_name", "influence_tier", "is_customer", "customer_key", "typical_sentiment", "complaint_count"]
 
+    def _sigval(v):
+        # Normalize so a real ABSENCE never looks like a change: DB NULL reads back as NaN
+        # while the recomputed value is None ('nan' != 'None' minted a junk SCD2 version for
+        # every non-customer author on every rebuild). Also fold 5.0 -> "5" (float64 columns).
+        if v is None or (isinstance(v, float) and v != v):
+            return ""
+        if isinstance(v, float) and v.is_integer():
+            return str(int(v))
+        return str(v)
+
     def sig(d):
-        return "|".join(str(d.get(k)) for k in track)
+        return "|".join(_sigval(d.get(k)) for k in track)
 
     ts = db.now()
     new_v, changed = 0, 0

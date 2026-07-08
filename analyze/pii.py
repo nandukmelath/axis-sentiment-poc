@@ -64,7 +64,7 @@ def mask(text):
             types.append("card")
             return "XXXX-XXXX-XXXX-" + d[-4:]
         if n == 12:
-            types.append("aadhaar")
+            types.append("aadhaar_or_account")   # 12 digits is ambiguous (Aadhaar vs acct); redacted either way
             return "XXXX-XXXX-" + d[-4:]
         if n == 10:
             types.append("phone")

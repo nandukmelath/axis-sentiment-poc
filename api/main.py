@@ -6,6 +6,7 @@ Docs: http://localhost:8600/docs
 """
 import os
 import time
+import hmac
 import logging
 from collections import defaultdict, deque
 
@@ -50,7 +51,7 @@ async def _rate_limit(request: Request, call_next):
 
 def auth(x_api_key: str = Header(default=None)):
     want = os.getenv("AXIS_API_KEY")
-    if want and x_api_key != want:
+    if want and not hmac.compare_digest(x_api_key or "", want):   # constant-time (no timing side-channel)
         raise HTTPException(status_code=401, detail="invalid or missing x-api-key")
     return True
 

@@ -3,7 +3,7 @@ Together, Cerebras (any /v1/chat/completions endpoint). Set LLM_PROVIDER + the
 matching *_API_KEY in .env. JSON-object output; the VADER baseline is the safety net,
 so any post the LLM can't parse simply stays VADER-scored (never lost)."""
 import os, json, time, re
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, APITimeoutError
 from config import LLM_PROVIDER, LLM_MODEL, OPENAI_COMPAT, MAX_RETRIES
 from analyze.schema import (PostAnalysis, Sentiment, Emotion, Urgency, Intent, Aspect,
                             Team, RBICategory)
@@ -91,7 +91,9 @@ def _client_model(provider=None, model=None):
         raise RuntimeError(f"{key_env} not set (.env)")
     # LLM_MODEL global override applies only to the primary provider; fallbacks use their default.
     chosen = model or (LLM_MODEL if (provider is None or provider == LLM_PROVIDER) else "") or default_model
-    return OpenAI(base_url=base, api_key=key), chosen, p
+    # max_retries=0: don't let the SDK add its own retry-with-backoff on top of ours (a DOWN
+    # provider like a stopped freellmapi:3001 otherwise stalls ~108s/batch before failover).
+    return OpenAI(base_url=base, api_key=key, max_retries=0, timeout=20.0), chosen, p
 
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
@@ -116,6 +118,12 @@ def _loads(content):
 def _is_rate(e):
     s = str(e).lower()
     return "429" in s or "rate limit" in s or "quota" in s
+
+
+def _is_conn(e):
+    """Provider unreachable/timeout — fail over FAST (a DOWN primary must not burn the full
+    retry budget with backoff before the dispatcher can try the next provider)."""
+    return isinstance(e, (APIConnectionError, APITimeoutError)) or "connection error" in str(e).lower()
 
 
 def _retry_after(e):
@@ -159,10 +167,12 @@ def analyze_batch(posts, provider=None):
             return out
         except Exception as e:  # noqa
             last = e
-            if _is_rate(e):     # rate/daily limit — 1 quick retry, then raise so the dispatcher fails over
+            if _is_rate(e) or _is_conn(e):   # capped OR unreachable — 1 quick retry then fail over
                 if attempt >= 1:
                     break
-                time.sleep(min(_retry_after(e) or 3, 5))
+                time.sleep(min(_retry_after(e) or 2, 3))
+            elif attempt >= MAX_RETRIES - 1:
+                break                         # last attempt: don't sleep before raising
             else:
                 time.sleep(min(2 ** attempt + 1, 20))
             print(f"  {prov} retry {attempt+1}/{MAX_RETRIES} ({str(e)[:70]})")
@@ -178,10 +188,12 @@ def generate_text(prompt, model=None, provider=None):
             return r.choices[0].message.content
         except Exception as e:  # noqa
             last = e
-            if _is_rate(e):     # rate/daily limit — 1 quick retry, then raise to fail over
+            if _is_rate(e) or _is_conn(e):
                 if attempt >= 1:
                     break
-                time.sleep(min(_retry_after(e) or 3, 5))
+                time.sleep(min(_retry_after(e) or 2, 3))
+            elif attempt >= MAX_RETRIES - 1:
+                break
             else:
                 time.sleep(min(2 ** attempt + 1, 15))
             print(f"  {prov} generate retry {attempt+1}/{MAX_RETRIES} ({str(e)[:70]})")
