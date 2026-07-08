@@ -1,0 +1,60 @@
+name: axis-pipeline
+# Cloud orchestration -- replaces local Airflow. Runs the full harvest on a schedule,
+# writing to the Neon warehouse. LLM depth routes through freellmapi (Sealos) with a
+# direct multi-provider failover behind it (all keys are GitHub repo Secrets).
+#
+# Required GitHub Secrets (Settings -> Secrets and variables -> Actions):
+#   DATABASE_URL        postgresql+psycopg2://...neon.tech/...?sslmode=require
+#   FREELLM_API_KEY     freellmapi-...            (unified key on the Sealos instance)
+#   FREELLM_BASE_URL    https://<sealos-app>/v1   (e.g. https://llxegfifaxml.usw-1.sealos.app/v1)
+#   GROQ_API_KEY        gsk_...        }
+#   CEREBRAS_API_KEY    csk-...        }  direct fallbacks if freellmapi is unreachable
+#   GEMINI_API_KEY      AIza...        }
+#   OPENROUTER_API_KEY  sk-or-...      }
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'      # every 12h (private-repo Actions minutes stay under 2000/mo)
+  workflow_dispatch: {}          # manual "Run workflow" button
+
+concurrency:
+  group: axis-pipeline
+  cancel-in-progress: false      # never overlap two harvests writing the same DB
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Direct multi-provider failover -- no always-on freellmapi/Sealos needed in the cloud.
+      # groq -> cerebras -> gemini -> openrouter; each skipped if its key is unset.
+      LLM_PROVIDER: groq
+      LLM_FALLBACKS: cerebras,gemini,openrouter
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      SLEEP_BETWEEN_BATCHES: '2'
+      FETCH_MULT: '4'
+      BEAM_RUNNER: DirectRunner
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Ensure warehouse schema on Neon
+        run: python db.py
+
+      - name: Run full harvest (fetch -> classify -> warehouse -> marts)
+        run: python -m run_harvest
+
+      - name: Data-quality gate
+        run: python -m warehouse.dq_checks
