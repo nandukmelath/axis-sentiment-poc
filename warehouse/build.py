@@ -30,7 +30,7 @@ BRIDGE_COLS = ["author", "customer_key", "match_method", "confidence", "verified
 FACT_MENTION_COLS = ["source_id", "author", "author_key", "customer_key", "source", "created_date",
                      "sentiment", "score", "emotion_intensity", "intent", "urgency", "recommended_team",
                      "rbi_category", "product", "engagement", "view_count", "confidence",
-                     "churn_risk", "fraud_signal", "pii_present", "cluster_id"]
+                     "churn_risk", "fraud_signal", "pii_present", "cluster_id", "date_key", "source_key"]
 FACT_ASPECT_COLS = ["source_id", "aspect", "sentiment", "evidence"]
 FACT_INTERACTION_COLS = ["issue_id", "conversation_id", "source", "customer_key", "author",
                          "inbound_source_id", "opened_at", "first_response_at", "response_latency_min",
@@ -211,6 +211,10 @@ def build_facts():
     m["created_date"] = db.parse_dt(m["created_at"]).dt.strftime("%Y-%m-%d")
     m["author_key"] = m["author"].map(amap)
     m["customer_key"] = m["author"].map(bmap)
+    # set the star FKs HERE so they land atomically with the fact row (replace_rows) — never a
+    # window where fact_mention exists with NULL date_key (star.backfill remains an idempotent net).
+    m["date_key"] = m["created_date"].map(lambda d: int(d.replace("-", "")) if isinstance(d, str) and d else None)
+    m["source_key"] = m["source"]
 
     db.replace_rows("fact_mention", m.to_dict("records"), FACT_MENTION_COLS)   # atomic swap
 
