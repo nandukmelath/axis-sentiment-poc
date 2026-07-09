@@ -65,6 +65,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# CACHED: the two auto-refresh fragments (1s + 6s) call fresh() constantly; without this the
+# full analysis+raw-text join was pulled from the DB every few seconds, 24/7 — that egress alone
+# blew Neon's free data-transfer quota. Data only changes every 12h (cron), so a 15-min cache is
+# imperceptibly stale; the live clock still ticks each second, and the RUN button clears the cache.
+@st.cache_data(ttl=1800, show_spinner=False)
 def fresh():
     a = db.df("""SELECT a.*, r.text, r.url, r.source, r.author, r.created_at, r.engagement,
                         COALESCE(cp.lang, r.lang, 'en') AS lang
