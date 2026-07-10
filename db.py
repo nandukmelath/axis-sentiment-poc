@@ -289,6 +289,56 @@ def replace_rows(table, rows, cols):
     return len(norm)
 
 
+# ---- DQ gate (ADR-001): snapshot last-good derived tables, restore if the rebuild fails DQ ----
+# The read-critical tables the dashboard/API consume and the pipeline fully rebuilds each run.
+# Excludes source (raw_posts/analysis/clean_posts), SCD2 dim_author, static seed dims, and
+# append-only ops tables (run_metrics/eval_history/audit_log).
+GATED_TABLES = [
+    "clusters", "fact_mention", "fact_aspect_sentiment", "fact_interaction",
+    "dim_date", "fact_daily",
+    "mart_kpis", "mart_admin_analytics", "mart_rm_enablement", "mart_channel",
+    "mart_product_scorecard", "mart_influencers", "mart_team_queue", "mart_fraud",
+    "mart_trends", "mart_geo", "mart_competitor_sov", "mart_churn_risk",
+    "mart_forecast", "mart_entities", "alerts",
+]
+
+
+def _has_table(name):
+    from sqlalchemy import inspect as _inspect
+    return _inspect(_engine).has_table(name)
+
+
+def snapshot_tables(tables=GATED_TABLES):
+    """Copy each table's current (last-good) data to {t}__bak before a gated rebuild.
+    Run AFTER ensure_tables() so the snapshot's columns match the live table."""
+    for t in tables:
+        if not _has_table(t):
+            continue
+        with _engine.begin() as c:
+            c.execute(text(f'DROP TABLE IF EXISTS "{t}__bak"'))
+            c.execute(text(f'CREATE TABLE "{t}__bak" AS SELECT * FROM "{t}"'))
+
+
+def restore_tables(tables=GATED_TABLES):
+    """Roll each gated table's DATA back from its snapshot — DELETE+INSERT so the live table
+    (its indexes, PK, and dependent views) is never dropped. Dialect-agnostic."""
+    from sqlalchemy import inspect as _inspect
+    insp = _inspect(_engine)
+    for t in tables:
+        bak = f"{t}__bak"
+        if not insp.has_table(bak) or not insp.has_table(t):
+            continue
+        cols = ",".join(f'"{c["name"]}"' for c in insp.get_columns(bak))
+        with _engine.begin() as c:
+            c.execute(text(f'DELETE FROM "{t}"'))
+            c.execute(text(f'INSERT INTO "{t}" ({cols}) SELECT {cols} FROM "{bak}"'))
+
+
+def drop_snapshots(tables=GATED_TABLES):
+    for t in tables:
+        execute(f'DROP TABLE IF EXISTS "{t}__bak"')
+
+
 def set_masked(source_id, text_masked, pii_types):
     with _engine.begin() as c:
         c.execute(text("UPDATE analysis SET text_masked=:m, pii_types=:t WHERE source_id=:s"),

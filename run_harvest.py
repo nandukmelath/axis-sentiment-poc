@@ -10,6 +10,7 @@ Crank the harvest with env:
 Run:  FETCH_MULT=8 SB_PAGES=10 SLEEP_BETWEEN_BATCHES=1.5 python -m run_harvest
 """
 import json, time
+import db
 
 
 def _step(summary, name, fn):
@@ -71,6 +72,14 @@ def run():
     # 4. LLM DEPTH — the token drain. Batches; on total 429 the batch skips, VADER holds.
     _step(summary, "llm_enriched", lambda: run_llm(limit=None))
 
+    # --- DQ GATE (ADR-001) setup: finalize schema, then snapshot the LAST-GOOD derived tables
+    #     before any of them is rebuilt, so a build that fails DQ can be rolled back and no
+    #     bad/partial data is ever published to the dashboard/API.
+    from warehouse import build as wh_build
+    wh_build.ensure_tables()                    # idempotent; makes snapshot columns == live columns
+    db.snapshot_tables()
+    print(f"  [gate] snapshotted {len(db.GATED_TABLES)} last-good derived tables")
+
     # 5. EMBED + CLUSTER (real embeddings if a Gemini key; else TF-IDF) -> emerging issues
     from analyze import embed_cluster
     _step(summary, "clustered", embed_cluster.main)
@@ -122,12 +131,26 @@ def run():
     from analytics import ops
     _step(summary, "ops", ops.run_all)
 
-    # 14. DQ GATE
+    # 14. DQ GATE — validate the freshly-built derived layer; PUBLISH only on pass, else RESTORE
+    #     the snapshot (last-good) so bad/partial data never reaches the dashboard/API.
+    gate_bad = None
     try:
         from warehouse import dq_checks
-        _step(summary, "dq", dq_checks.main)
+        checks = dq_checks.run()
+        for n, ok, d in checks:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {n}{(' - ' + d) if d else ''}")
+        gate_bad = [n for n, ok, _ in checks if not ok]
     except Exception as e:
-        summary["dq_error"] = str(e)[:120]
+        gate_bad = [f"dq_crashed: {str(e)[:80]}"]
+    if gate_bad:
+        db.restore_tables()
+        summary["dq"] = f"FAIL - restored last-good, publish aborted: {gate_bad}"
+        print(f"  [gate] DQ FAILED {gate_bad} -> restored last-good derived tables; run aborted")
+    else:
+        db.drop_snapshots()
+        summary["dq"] = "pass (published)"
+        print(f"  [gate] DQ {len(checks)}/{len(checks)} -> published")
+    summary["gate_failed"] = bool(gate_bad)
 
     after = _counts()
     summary["after"] = after
@@ -137,4 +160,7 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    import sys
+    _summary = run()
+    if _summary.get("gate_failed"):
+        sys.exit(1)      # fail the GitHub Actions step so the cron goes red on a DQ-gate failure

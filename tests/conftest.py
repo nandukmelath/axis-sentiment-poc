@@ -41,6 +41,9 @@ def fresh_db():
                   "eval_history", "run_metrics",
                   "dim_date", "dim_source", "dim_team", "dim_category", "fact_daily", "mart_channel"]:
             c.execute(text(f"DROP TABLE IF EXISTS {t}"))
+        # ADR-001 gate snapshots — drop any left by a crashed gate test
+        for t in getattr(db, "GATED_TABLES", []):
+            c.execute(text(f'DROP TABLE IF EXISTS "{t}__bak"'))
     build.ensure_tables()
     from analytics import features
     features.ensure_tables()

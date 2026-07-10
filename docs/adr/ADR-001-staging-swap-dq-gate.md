@@ -1,8 +1,29 @@
-# ADR-001: Make the DQ gate a real pre-commit gate via staging-table swap
+# ADR-001: Make the DQ gate a real pre-commit gate
 
-**Status:** Proposed
+**Status:** Accepted — **v1 (snapshot + restore-on-failure) SHIPPED 2026-07-09**; v2 (schema-swap) deferred
 **Date:** 2026-07-09
 **Deciders:** project owner (solo)
+
+## Implemented (v1)
+Shipped a **snapshot → build → DQ → publish-or-restore** gate instead of the pure staging-swap
+(Option A below), chosen because it is **dual-dialect, view/index-safe, and needs no builder
+rewrites** — much lower risk to land on the live cron:
+- `db.snapshot_tables()` copies the read-critical rebuilt tables (`db.GATED_TABLES`) to `{t}__bak`
+  before any are rebuilt (after `ensure_tables()` so columns match).
+- `run_harvest` runs the full build, then `dq_checks.run()`. On **PASS** → `drop_snapshots()`
+  (publish). On **FAIL** → `restore_tables()` (DELETE+INSERT from `__bak`, so the live tables —
+  and their indexes + dependent views — are never dropped) and `sys.exit(1)` so the cron goes red.
+- Tested both dialects (`tests/test_gate.py`) + verified end-to-end (a wiped fact_mention fails
+  DQ and is rolled back to 1754 rows with `vw_mention` intact).
+
+**Effect:** the window where bad/partial data is visible shrinks from **~12h (until next run)** to
+**the build duration (~seconds)** — and a failed build never *persists*. **Residual gap (why v2):**
+during a build the dashboard can still briefly see cross-table inconsistency (fact updated, mart
+not yet). v2 (a Postgres schema-swap that builds into `stg` and swaps atomically) also hides the
+mid-build state; deferred because it is Postgres-specific + interacts with the connection pool.
+
+---
+## Original analysis (v2 options retained for the deferred work)
 
 ## Context
 `run_harvest` builds facts/marts by writing DIRECTLY to the live tables the dashboard + API
