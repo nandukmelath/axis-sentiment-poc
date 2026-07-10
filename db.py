@@ -14,7 +14,13 @@ DB_URL = os.getenv("DATABASE_URL", _default)
 # busy_timeout lets a concurrent reader (dashboard) and writer (RUN) coordinate instead of
 # erroring immediately — important when the dashboard is open while a refresh runs.
 _connect_args = {"timeout": 30} if DB_URL.startswith("sqlite") else {}
-_engine = create_engine(DB_URL, future=True, pool_pre_ping=True, connect_args=_connect_args)
+# Pool tuned for a managed pooler (Supabase supavisor / PgBouncer): pre_ping drops dead
+# conns; pool_recycle avoids the pooler silently closing idle ones; a small bounded pool
+# stays well under the free-tier connection cap (one engine per process: dashboard + cron).
+_pool_args = {} if DB_URL.startswith("sqlite") else {
+    "pool_recycle": 1800, "pool_size": 5, "max_overflow": 5, "pool_timeout": 30}
+_engine = create_engine(DB_URL, future=True, pool_pre_ping=True,
+                        connect_args=_connect_args, **_pool_args)
 DIALECT = _engine.dialect.name  # 'sqlite' | 'postgresql'
 
 if DIALECT == "sqlite":

@@ -40,9 +40,18 @@ Trigger: UI **Trigger DAG**, or `airflow dags trigger axis_sentiment_pipeline`.
 | a `scrape_*` task green but 0 rows | source needs a key / low volume | add the source key (Reddit/YouTube/ScrapeBadger) |
 | `dq_check` fails | bad gold data | read its log — it names the failing check |
 
-## Secrets
-- Keys live in `.env` (git-ignored). Never commit. `LLM_PROVIDER=groq` + `GROQ_API_KEY` for LLM depth.
-- **Rotate a leaked key**: console.groq.com/keys (Groq) — revoke + recreate, update `.env`. No restart needed (read per run).
+## Secrets — THREE synced locations (keep them in step)
+Secrets live in 3 places; `.env` is the source of truth. After changing `.env`, propagate:
+
+| Location | Used by | How to update |
+|---|---|---|
+| **`.env`** (git-ignored) | local dev + `run_harvest` | edit the file (source of truth) |
+| **GitHub Actions repo secrets** | the 12h cron (`pipeline.yml`) | `python -m tools.sync_secrets` (pushes DATABASE_URL + LLM keys from `.env`) |
+| **Streamlit Cloud app secrets** | the dashboard's `DATABASE_URL` | app menu → Settings → Secrets (manual — NOT synced by the script) |
+
+- `python -m tools.sync_secrets --dry-run` shows which keys will sync. `LLM_PROVIDER=groq` + `GROQ_API_KEY` = LLM depth.
+- **Rotate a leaked key**: revoke+recreate at the provider, update `.env`, then `python -m tools.sync_secrets` + update the Streamlit secret. No app restart needed for `.env` (read per run); GH/Streamlit need the secret re-set.
+- **DB moved (Neon→Supabase etc.)**: update `.env` DATABASE_URL → `sync_secrets` (cron) → Streamlit Settings→Secrets → the dashboard needs a **reboot** (engine is created at import) — bump the `rebuild-token` in `requirements.txt` to force it.
 
 ## Production: Postgres + Airflow LocalExecutor (parallel) — verified locally
 Kills the SQLite-on-WSL fragility and runs tasks in parallel (measured: 9 concurrent, 27/27 green).
