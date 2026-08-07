@@ -31,6 +31,18 @@ SOURCE_SEED = [
     ("mastodon", "Mastodon", "social", "microblog", 1, "low"),
     ("bluesky", "Bluesky", "social", "microblog", 1, "low"),
     ("youtube", "YouTube", "social", "video", 0, "med"),
+    # Sources added after the original seed. Without a row here a source still lands in
+    # fact_mention, but every dim_source join drops it — so the channel breakdown and the
+    # "N public sources" headline silently under-report it.
+    ("valuepickr", "ValuePickr forum", "forum", "community", 1, "high"),
+    ("businessstandard", "Business Standard", "news", "publisher", 1, "high"),
+    ("consumercomplaints", "ConsumerComplaints.in", "review", "complaint", 1, "high"),
+    ("trustpilot", "Trustpilot", "review", "consumer", 1, "high"),
+    ("mouthshut", "MouthShut", "review", "consumer", 1, "med"),
+    ("gmaps", "Google Maps branches", "review", "location", 1, "med"),
+    # The only INTERNAL channel: employees, not customers. Typed separately so it can be
+    # split out of customer-facing CX metrics rather than diluting them.
+    ("ambitionbox", "AmbitionBox (employees)", "employee", "review", 1, "high"),
 ]
 # team_code, team_name, owner_role, sla_hours, is_escalation
 TEAM_SEED = [
