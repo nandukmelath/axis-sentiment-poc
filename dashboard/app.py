@@ -20,11 +20,15 @@ except Exception:
     pass
 
 import db
+import newsroom
+import overview
 import panels
+import theme
 from config import BRAND
 
-st.set_page_config(page_title=f"{BRAND} — Live Sentiment War-Room", layout="wide",
+st.set_page_config(page_title=f"{BRAND} — Customer Experience Performance", layout="wide",
                    initial_sidebar_state="expanded")
+theme.apply()   # Hex-style CSS + plotly default template (restyles every chart/panel)
 
 
 def _auth_gate():
@@ -45,24 +49,21 @@ def _auth_gate():
 if not _auth_gate():
     st.stop()
 
-SENT_COLORS = {"negative": "#C0392B", "positive": "#2E8B57", "neutral": "#7F8C8D", "mixed": "#E67E22"}
-URG_W = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+# Two audiences, two surfaces. The default is the read-only performance dashboard —
+# one scrolling page answering "how is the bank performing". The operational
+# war-room + role tabs (and the pipeline RUN button) sit behind the second mode so
+# a reader can never trip a 15-minute fetch from the landing page.
+VIEW = st.sidebar.radio("View", ["Signal feed", "Performance dashboard", "Operations detail"],
+                        key="_view", label_visibility="collapsed")
+if VIEW == "Signal feed":
+    newsroom.render()
+    st.stop()
+if VIEW == "Performance dashboard":
+    overview.render()
+    st.stop()
 
-st.markdown("""
-<style>
-.live-badge{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:#C0392B;font-size:15px}
-.live-dot{height:11px;width:11px;background:#e11;border-radius:50%;display:inline-block;
-  box-shadow:0 0 0 0 rgba(225,17,17,.7);animation:pulse 1.2s infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(225,17,17,.7)}70%{box-shadow:0 0 0 10px rgba(225,17,17,0)}100%{box-shadow:0 0 0 0 rgba(225,17,17,0)}}
-.ticker{overflow:hidden;white-space:nowrap;background:#0b1020;color:#e8eef7;border-radius:8px;
-  padding:8px 0;margin:4px 0 6px 0;border:1px solid #22304a}
-.ticker-track{display:inline-block;padding-left:100%;animation:scroll 45s linear infinite}
-.ticker:hover .ticker-track{animation-play-state:paused}
-@keyframes scroll{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
-.tk{margin:0 26px;font-size:13px}
-.clock{font-variant-numeric:tabular-nums;color:#5C7088;font-weight:600}
-</style>
-""", unsafe_allow_html=True)
+SENT_COLORS = theme.SENT_COLORS
+URG_W = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
 
 # CACHED: the two auto-refresh fragments (1s + 6s) call fresh() constantly; without this the
@@ -136,14 +137,14 @@ def _run_pipeline(window_label):
 
 
 # ---------------- header ----------------
-st.title(f"🏦 {BRAND} — Live Sentiment War-Room")
+st.title(f"{BRAND} — Live Sentiment War-Room")
 st.caption("Real-time customer voice across social media · AI sentiment by Gemini · in-house / DPDP-friendly")
 
 # ---------------- RUN bar (main page — always visible) ----------------
 _rb = st.columns([0.22, 0.24, 0.54])
-_rb[0].selectbox("⏱ Time window", ["All time", "1 hour", "1 day", "1 month"], key="t_window",
+_rb[0].selectbox("Time window", ["All time", "1 hour", "1 day", "1 month"], key="t_window",
                  label_visibility="collapsed")
-if _rb[1].button("▶ Run fetch + refresh", type="primary"):
+if _rb[1].button("Run fetch + refresh", type="primary"):
     _run_pipeline(st.session_state.get("t_window", "All time"))
 _rb[2].caption("Pick a window → fetches Axis mentions for it → DB → the board reflects that window.")
 
@@ -196,7 +197,7 @@ def live_strip():
         if not clusters.empty else pd.DataFrame()
     if not em.empty:
         t = em.sort_values("size", ascending=False).iloc[0]
-        st.error(f"🚨 **EMERGING** — \"{t['title']}\" · {int(t['size'])} mentions · "
+        st.error(f"**EMERGING** — \"{t['title']}\" · {int(t['size'])} mentions · "
                  f"{int(t['recent_share']*100)}% in last 24h · owner: **{t['top_team']}** · act now.")
 
     k = st.columns(6)
@@ -206,8 +207,8 @@ def live_strip():
     negp = 100 * fa["sentiment"].isin(["negative", "mixed"]).mean() if len(fa) else 0
     k[2].metric("% negative", f"{negp:.0f}%")
     k[3].metric("Complaints", int((fa["intent"] == "complaint").sum()))
-    k[4].metric("🔴 Critical", int((fa["urgency"] == "critical").sum()))
-    k[5].metric("🛡️ Fraud", int(fa["fraud_signal"].sum()))
+    k[4].metric("Critical", int((fa["urgency"] == "critical").sum()))
+    k[5].metric("Fraud", int(fa["fraud_signal"].sum()))
 
     # scrolling ticker of newest mentions
     recent = fa.sort_values("created_dt", ascending=False, na_position="last").head(30)
@@ -216,7 +217,7 @@ def live_strip():
         col = SENT_COLORS.get(r["sentiment"], "#ccc")
         txt = html.escape((r["text"] or "")[:110])
         items.append(f'<span class="tk"><b style="color:{col}">●</b> '
-                     f'<span style="color:#9fb3c8">[{r["source"]}]</span> {txt}</span>')
+                     f'<span class="tk-src">{r["source"]}</span> {txt}</span>')
     st.markdown(f'<div class="ticker"><div class="ticker-track">{"".join(items)}</div></div>',
                 unsafe_allow_html=True)
 
@@ -268,7 +269,7 @@ def analytics():
         fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=340, xaxis_title="", yaxis_title="")
         st.plotly_chart(fig, width="stretch")
 
-    st.subheader("🔎 Top issues (auto-clustered)")
+    st.subheader("Top issues (auto-clustered)")
     if not clusters.empty:
         cc = clusters.copy()
         cc["🚨"] = ((cc["recent_share"] >= 0.6) & (cc["avg_score"] < 0) & (cc["size"] >= 2)).map({True: "🚨", False: ""})
@@ -276,7 +277,7 @@ def analytics():
         cc = cc.rename(columns={"title": "issue", "size": "mentions", "avg_score": "avg sentiment", "top_team": "owner"})
         st.dataframe(cc[["🚨", "issue", "mentions", "recent%", "avg sentiment", "owner"]], width="stretch", hide_index=True)
 
-    st.subheader("⚡ Priority action queue")
+    st.subheader("Priority action queue")
     pq = fa.copy()
     pq["priority"] = pq["urgency"].map(URG_W).fillna(1) * (1 + pq["engagement"].fillna(0) ** 0.5) * (0.5 + (-pq["score"]).clip(lower=0))
     pq = pq.sort_values("priority", ascending=False).head(15)
@@ -286,7 +287,7 @@ def analytics():
                                 "recommended_team": st.column_config.TextColumn("team"),
                                 "recommended_action": st.column_config.TextColumn("action")})
 
-    with st.expander("📋 Executive brief"):
+    with st.expander("Executive brief"):
         if os.path.exists("exec_summary.md"):
             st.markdown(open("exec_summary.md", encoding="utf-8").read())
         else:
@@ -302,7 +303,7 @@ def _safe(sql):
 
 # ---------------- RM COCKPIT (warehouse mart) ----------------
 def rm_cockpit():
-    st.subheader("👤 RM Cockpit — know the customer before you call")
+    st.subheader("RM Cockpit — know the customer before you call")
     st.caption("Per-customer pain point + next-best cross-sell, from social voice joined to CRM.")
     m = _safe("SELECT * FROM mart_rm_enablement")
     if m.empty:
@@ -337,7 +338,7 @@ def rm_cockpit():
 
 # ---------------- ADMIN ANALYTICS (warehouse marts) ----------------
 def admin_analytics():
-    st.subheader("🛠️ Admin Analytics — resolution loop & follow-up")
+    st.subheader("Admin Analytics — resolution loop & follow-up")
     k = _safe("SELECT * FROM mart_kpis")
     if k.empty:
         st.info("No admin data yet. Run `python -m warehouse.build`.")
@@ -411,6 +412,7 @@ TAB_FUNCS = {
 }
 
 _names = ROLE_TABS.get(role) or list(TAB_FUNCS.keys())
-for _t, _nm in zip(st.tabs(_names), _names):
+# Hex UI is emoji-free: clean the visible label, keep the original string as the key
+for _t, _nm in zip(st.tabs([theme.strip_emoji(n) for n in _names]), _names):
     with _t:
         TAB_FUNCS[_nm]()

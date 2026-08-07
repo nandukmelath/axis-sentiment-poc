@@ -6,8 +6,7 @@ import plotly.express as px
 import streamlit as st
 
 import db
-
-SENT_COLORS = {"negative": "#C0392B", "positive": "#2E8B57", "neutral": "#7F8C8D", "mixed": "#E67E22"}
+from theme import SENT_COLORS, DIVERGING, DIVERGING_R   # shared Hex-style palette
 
 
 def _safe(sql, params=None):
@@ -36,7 +35,7 @@ def competitor_sov():
         st.plotly_chart(fig, width="stretch")
     with c[1]:
         fig2 = px.bar(m, x="brand", y="avg_score", color="avg_score",
-                      color_continuous_scale=["#C0392B", "#7F8C8D", "#2E8B57"], range_color=[-1, 1])
+                      color_continuous_scale=DIVERGING, range_color=[-1, 1])
         fig2.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=320, xaxis_title="",
                            yaxis_title="avg sentiment")
         st.plotly_chart(fig2, width="stretch")
@@ -54,7 +53,7 @@ def channels():
     c = st.columns([0.5, 0.5])
     with c[0]:
         fig = px.bar(m, x="source_type", y="mentions", color="pct_negative", text="mentions",
-                     color_continuous_scale=["#2E8B57", "#7F8C8D", "#C0392B"], range_color=[0, 50])
+                     color_continuous_scale=DIVERGING_R, range_color=[0, 50])
         fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=320, xaxis_title="",
                           yaxis_title="mentions", coloraxis_colorbar_title="% neg")
         st.plotly_chart(fig, width="stretch")
@@ -84,7 +83,7 @@ def product_scorecards():
         return _empty("Run `python -m analytics.features`.")
     top = m.head(15)
     fig = px.bar(top, x="nps_proxy", y="product", orientation="h", color="nps_proxy",
-                 color_continuous_scale=["#C0392B", "#7F8C8D", "#2E8B57"], range_color=[-100, 100])
+                 color_continuous_scale=DIVERGING, range_color=[-100, 100])
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=460, yaxis_title="",
                       xaxis_title="NPS-proxy")
     st.plotly_chart(fig, width="stretch")
@@ -117,7 +116,7 @@ def geo_panel():
     if m.empty:
         return _empty("Run `python -m analytics.features`. (No city mentions detected yet.)")
     fig = px.bar(m, x="city", y="mentions", color="avg_score",
-                 color_continuous_scale=["#C0392B", "#7F8C8D", "#2E8B57"], range_color=[-1, 1],
+                 color_continuous_scale=DIVERGING, range_color=[-1, 1],
                  hover_data=["region", "pct_negative"])
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=360, xaxis_title="", yaxis_title="mentions")
     st.plotly_chart(fig, width="stretch")
@@ -336,7 +335,7 @@ def entities_panel():
     if m.empty:
         return _empty("Run `python -m analytics.intelligence`.")
     fig = px.bar(m.head(20), x="mentions", y="entity", orientation="h", color="avg_score",
-                 color_continuous_scale=["#C0392B", "#7F8C8D", "#2E8B57"], range_color=[-1, 1],
+                 color_continuous_scale=DIVERGING, range_color=[-1, 1],
                  hover_data=["etype"])
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=440, yaxis_title="", xaxis_title="mentions")
     st.plotly_chart(fig, width="stretch")

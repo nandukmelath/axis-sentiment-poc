@@ -1,7 +1,14 @@
 # Streamlit Community Cloud config for the dashboard (frontend tier).
+# Hex (hex.tech) LIGHT theme — exact tokens from their [data-theme='light'].
+# Fine-grained styling: dashboard/theme.py (CSS + plotly template).
+# Switch to Hex's dark theme with env AXIS_THEME=dark (and flip base/colors below).
 [theme]
-base = "dark"
-primaryColor = "#8A1538"        # Axis maroon
+base = "light"
+primaryColor = "#473982"              # minsk
+backgroundColor = "#fcf8f8"           # bg300 — warm blush off-white
+secondaryBackgroundColor = "#FFFCFC"  # fg100 — card surface
+textColor = "#31263B"                 # eggplant / fontColorDEFAULT
+font = "sans serif"
 
 [server]
 headless = true
