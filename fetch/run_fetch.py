@@ -8,7 +8,9 @@ import datetime
 import pandas as pd
 from db import init_db, upsert_posts
 from fetch import (news, playstore, appstore, reddit, youtube, twitter, scrapebadger,
-                   hackernews, mastodon_search, technofino, rss_news, gdelt)
+                   hackernews, mastodon_search, technofino, rss_news, gdelt, tiktok,
+                   consumercomplaints, trustpilot, linkedin, instagram, facebook,
+                   mouthshut, googlereviews, scrapling_sources, scrapling_stealth)
 
 SOURCES = [
     ("news", news.fetch),
@@ -23,6 +25,24 @@ SOURCES = [
     ("technofino", technofino.fetch),       # FREE forum RSS+crawl — Axis CC complaint epicenter
     ("rssnews", rss_news.fetch),            # FREE direct-outlet banking-desk RSS pack
     ("gdelt", gdelt.fetch),                 # FREE global news index (throttled 1 req/6s)
+    ("tiktok", tiktok.fetch),                # ScrapeBadger native TikTok search (paid)
+    ("consumercomplaints", consumercomplaints.fetch),  # ScrapeBadger web-scrape — Axis complaint threads (paid)
+    ("trustpilot", trustpilot.fetch),        # ScrapeBadger web-scrape — Axis Bank reviews (paid)
+    ("linkedin", linkedin.fetch),            # ScrapeBadger native company/posts + web-scrape fallback (paid)
+    ("instagram", instagram.fetch),          # ScrapeBadger web-scrape — @axisbank profile (paid, login-wall risk)
+    ("facebook", facebook.fetch),            # ScrapeBadger web-scrape — Axis Bank Page (paid, login-wall risk)
+    ("mouthshut", mouthshut.fetch),          # ScrapeBadger web-scrape — Axis Bank reviews (paid)
+    ("googlereviews", googlereviews.fetch),  # ScrapeBadger web-scrape — Axis Bank branch reviews (paid, heaviest anti-bot)
+    # --- FREE Scrapling sources (curl_cffi TLS impersonation, no key, no credits) ---
+    ("cc_web", scrapling_sources.fetch_consumercomplaints),   # real Indian customer complaints
+    ("valuepickr", scrapling_sources.fetch_valuepickr),       # Discourse JSON API — investor forum
+    ("businessstandard", scrapling_sources.fetch_businessstandard),  # 403s plain requests; needs TLS impersonation
+    ("ambitionbox", scrapling_sources.fetch_ambitionbox),     # EMPLOYEE reviews — Glassdoor 403s, this doesn't
+    # --- FREE stealth-browser sources (Scrapling StealthyFetcher) — OFF unless STEALTH_SOURCES=1.
+    # Each launches a real browser (~20s), so they self-skip on the fast/RUN path. ---
+    ("trustpilot_web", scrapling_stealth.fetch_trustpilot),   # Cloudflare-solved; structured review JSON
+    ("gmaps_web", scrapling_stealth.fetch_gmaps_branches),    # branch name + star rating
+    ("mouthshut_web", scrapling_stealth.fetch_mouthshut),     # free replacement for the paid mouthshut.py
 ]
 # Note: fetch/bluesky_search.py exists but public.api.bsky.app now 403s batch search —
 # the working keyless Bluesky path is the Jetstream firehose in stream/bluesky.py.

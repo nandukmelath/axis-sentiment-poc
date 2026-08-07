@@ -35,6 +35,7 @@ SUBREDDITS = [
 ]
 # how many top comments to pull per matched submission (comments carry most sentiment)
 REDDIT_COMMENTS_PER = int(os.getenv("REDDIT_COMMENTS_PER", "6"))
+IG_HANDLE = os.getenv("IG_HANDLE", "axisbank")   # public Instagram profile (login-wall risk — see fetch/instagram.py)
 PLAY_APP_ID = "com.axis.mobile"   # confirm from the Axis Mobile Play Store URL
 PLAY_COUNTRY = "in"
 PLAY_LANG = "en"
@@ -50,6 +51,7 @@ BLUESKY_QUERIES = ["Axis Bank", "AxisBank", "Axis Magnus"]      # public.api.bsk
 HN_QUERY = "Axis Bank"                                          # Hacker News Algolia (no key)
 MASTODON_TAGS = ["AxisBank"]     # bare "#Axis" pulls off-brand (WWII 'Axis powers' memes); brand_match also gates
 APPSTORE_SEARCH = "Axis Mobile"                                # auto-resolve iOS app id when APPSTORE_APP_ID unset
+FB_PAGE = os.getenv("FB_PAGE", "AxisBank")                     # ScrapeBadger web-scrape target; login-wall risk
 # X/Twitter ingestion mode: 'csv' (import fetch/twitter_import.csv — reliable, default),
 # 'scrape' (free Nitter scraper — usually dead in 2026), 'auto' (scrape then csv fallback).
 TWITTER_MODE = os.getenv("TWITTER_MODE", "csv")
@@ -88,6 +90,17 @@ SB_QUERY = os.getenv("SB_QUERY", X_BACKFILL_QUERY)   # accounts OR-query
 SB_PAGES = int(os.getenv("SB_PAGES", "5"))           # pages per fetch (100 tweets/page)
 SB_QUERY_TYPE = os.getenv("SB_QUERY_TYPE", "Latest")
 
+# ---- ScrapeBadger LinkedIn (native company/posts, universal web-scrape fallback) ----
+LINKEDIN_COMPANY = os.getenv("LINKEDIN_COMPANY", "axis-bank")      # ScrapeBadger native company slug
+LINKEDIN_POSTS_URL = os.getenv(
+    "LINKEDIN_POSTS_URL", "https://www.linkedin.com/company/axisbank/posts/")  # public URL fallback
+LINKEDIN_MAX_POSTS = int(os.getenv("LINKEDIN_MAX_POSTS", "20"))    # credit-thrift cap per run
+
+# ---- ScrapeBadger TikTok (native /tiktok/search + /tiktok/get-hashtag-videos; paid) ----
+TIKTOK_QUERY = os.getenv("TIKTOK_QUERY", "Axis Bank")
+TIKTOK_HASHTAG = os.getenv("TIKTOK_HASHTAG", "axisbank")   # secondary pass, no '#'
+TIKTOK_MAX = int(os.getenv("TIKTOK_MAX", "20"))            # credit thrift — 1 page, ~20 items
+
 # ---- LLM provider (pluggable) ----
 # gemini | groq | openai | openrouter | deepseek | together | cerebras | ollama
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
@@ -123,6 +136,63 @@ FETCH_LIMITS = {k: max(v, int(v * _FETCH_MULT)) for k, v in
                 {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 30,
                  "bluesky": 25, "hackernews": 30, "mastodon": 20,
                  "technofino": 60, "rssnews": 40, "gdelt": 30}.items()}
+
+# ---- ConsumerComplaints.in (Axis Bank complaint threads; via ScrapeBadger web-scrape) ----
+# High-yield intent-rich complaint vein — no native API, scraped via /v1/web/scrape + ai_extract.
+CC_URL = os.getenv("CC_URL", "https://www.consumercomplaints.in/?search=Axis+Bank")
+CC_MAX_ITEMS = int(os.getenv("CC_MAX_ITEMS", "20"))   # credit thrift: 1 page/run, no pagination
+
+# ---- MouthShut (Axis Bank customer reviews; via ScrapeBadger web-scrape) ----
+# Cloudflare-walled for plain requests (confirmed, see README) — scraped via /v1/web/scrape +
+# ai_extract instead. "-page-1" default sort is newest-first on this listing.
+MOUTHSHUT_URL = os.getenv(
+    "MOUTHSHUT_URL", "https://www.mouthshut.com/product-reviews/axis-bank-reviews-925004521")
+MOUTHSHUT_MAX_ITEMS = int(os.getenv("MOUTHSHUT_MAX_ITEMS", "20"))   # credit thrift: 1 page/run
+
+# ---- Trustpilot (Axis Bank reviews; via ScrapeBadger web-scrape) ----
+# No confirmed Trustpilot slug for Axis Bank — try a couple of likely domain slugs in order;
+# fetch/trustpilot.py uses the first one that actually yields reviews.
+TRUSTPILOT_URLS = [u.strip() for u in os.getenv(
+    "TRUSTPILOT_URLS",
+    "https://www.trustpilot.com/review/axisbank.com;"
+    "https://www.trustpilot.com/review/www.axisbank.com").split(";") if u.strip()]
+TRUSTPILOT_MAX_ITEMS = int(os.getenv("TRUSTPILOT_MAX_ITEMS", "20"))   # credit thrift: 1 page/run
+
+# ---- Google Maps/Business reviews (Axis Bank branches; via ScrapeBadger web-scrape) ----
+# Heaviest anti-bot protection of any source in this pipeline — best-effort only, expect
+# frequent [] degradation (login walls / consent interstitials / dynamic map SPA).
+GOOGLE_REVIEWS_URL = os.getenv(
+    "GOOGLE_REVIEWS_URL", "https://www.google.com/maps/search/Axis+Bank")
+GOOGLE_REVIEWS_MAX_ITEMS = int(os.getenv("GOOGLE_REVIEWS_MAX_ITEMS", "20"))   # credit thrift: 1 page/run
+
+# ---- AmbitionBox (Axis Bank EMPLOYEE reviews; free, plain TLS-impersonated GET) ----
+# India's Glassdoor (Naukri-owned). Glassdoor/Indeed/Quora all hard-403 a plain GET; this one
+# returns 200 and ships every review in __NEXT_DATA__ — no browser, no key, no credits.
+# Adds the one dimension the other 17 sources miss: sentiment from INSIDE the bank (34.5k
+# reviews, each with 7 sub-ratings incl. work-life balance, promotions, job security). Employee
+# sentiment leads customer sentiment at a retail bank — attrition at the branch shows up in
+# service quality months later, so this is a leading indicator, not another complaint feed.
+AMBITIONBOX_URL = os.getenv(
+    "AMBITIONBOX_URL", "https://www.ambitionbox.com/reviews/axis-bank-reviews")
+AMBITIONBOX_PAGES = int(os.getenv("AMBITIONBOX_PAGES", "3"))      # 21 reviews/page, 500 pages exist
+AMBITIONBOX_MAX_ITEMS = int(os.getenv("AMBITIONBOX_MAX_ITEMS", "60"))
+AMBITIONBOX_SLEEP = float(os.getenv("AMBITIONBOX_SLEEP", "1.5"))  # polite gap between pages
+
+# ---- FREE stealth-browser sources (Scrapling StealthyFetcher; no key, no ScrapeBadger credits) ----
+# OFF by default: each launches a patchright Chromium (~20s/source) and solve_cloudflare
+# adds more, so it must NOT run on the fast dashboard RUN path. Enable with STEALTH_SOURCES=1
+# for a full harvest. These reach sources that plain TLS-impersonated HTTP cannot: Trustpilot
+# sits behind Cloudflare (solve_cloudflare clears it), Google Maps is a dynamic map SPA.
+STEALTH_SOURCES = os.getenv("STEALTH_SOURCES", "0") == "1"
+STEALTH_HEADLESS = os.getenv("STEALTH_HEADLESS", "1") == "1"
+# Trustpilot review pages (structured __NEXT_DATA__ JSON — stars, dated, customer text).
+STEALTH_TRUSTPILOT_URLS = [u.strip() for u in os.getenv(
+    "STEALTH_TRUSTPILOT_URLS",
+    "https://www.trustpilot.com/review/www.axisbank.com").split(";") if u.strip()]
+# Google Maps branch search — yields branch name + star rating (no per-review text in static DOM).
+STEALTH_GMAPS_URL = os.getenv(
+    "STEALTH_GMAPS_URL", "https://www.google.com/maps/search/axis+bank+branch")
+STEALTH_MAX_ITEMS = int(os.getenv("STEALTH_MAX_ITEMS", "40"))
 
 # ---- keyless source packs (endpoints verified live 2026-07-07) ----
 # Technofino deep-crawl: how many fresh Axis threads to open + replies per thread.
