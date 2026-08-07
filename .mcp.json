@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "axis": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    },
+    "scrapling": {
+      "command": "py",
+      "args": ["-3.14", "-m", "tools.scrapling_mcp"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
