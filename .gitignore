@@ -17,6 +17,14 @@ backups/
 logs/
 *.log
 .streamlit/secrets.toml
+
+# Generated data dumps — rebuildable from the DB (tools/db_report.py, tools/make_full_db_nb.py).
+# These embed the scraped corpus itself, so they bloat the repo and duplicate axis.db.
+db_export/
+full_db.ipynb
+AXIS_FULL_DB.html
+AXIS_DATA_REPORT.html
+.ipynb_checkpoints/
 # Workflows held back from push: the gh OAuth token lacks the `workflow` scope.
 # To enable the cron: `gh auth refresh -h github.com -s workflow` then
 # `git add -f .github/workflows && git commit -m "add workflows" && git push`.
