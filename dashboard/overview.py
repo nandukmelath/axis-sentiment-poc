@@ -65,6 +65,11 @@ def load():
                             WHERE avg_score < -0.05 AND size >= 3
                             ORDER BY size DESC LIMIT 12""")
     d["freshness"] = _safe("SELECT max(date_key) mx FROM fact_daily")
+    # Derived, not hardcoded: the masthead count used to be a literal and went stale every
+    # time a source was added. 'public' excludes the internal employee channel.
+    d["srccount"] = _safe("""SELECT count(DISTINCT p.source) n FROM raw_posts p
+                             LEFT JOIN dim_source s ON s.source_key = p.source
+                             WHERE coalesce(s.source_type, '') <> 'employee'""")
     return d
 
 
@@ -275,6 +280,7 @@ def masthead(d):
     fresh = d["freshness"]["mx"].iloc[0] if not d["freshness"].empty else None
     asof = pd.to_datetime(str(int(fresh)), format="%Y%m%d").strftime("%d %b %Y") if fresh else "—"
     total = int(d["score"]["n"].iloc[0]) if not d["score"].empty else 0
+    nsrc = int(d["srccount"]["n"].iloc[0]) if not d["srccount"].empty else 0
     st.markdown(f"""
     <div style="display:flex;justify-content:space-between;align-items:flex-end;
                 border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:6px">
@@ -290,7 +296,7 @@ def masthead(d):
       </div>
       <div style="text-align:right;font-family:{T['mono']};font-size:10.5px;
                   color:var(--muted);line-height:1.75">
-        <div>{total:,} analysed mentions · 10 public sources</div>
+        <div>{total:,} analysed mentions · {nsrc} public sources</div>
         <div>Coverage through <span style="color:var(--text)">{asof}</span></div>
       </div>
     </div>""", unsafe_allow_html=True)
