@@ -2,6 +2,7 @@
 import hashlib
 import urllib.parse
 import feedparser
+from bs4 import BeautifulSoup
 from config import NEWS_QUERIES, FETCH_LIMITS
 from fetch.webutil import brand_match
 
@@ -15,7 +16,12 @@ def fetch():
         q = urllib.parse.quote(f'"{query}"' if " " in query else query)
         d = feedparser.parse(RSS.format(q=q))
         for e in d.entries[:per]:
-            text = f"{e.get('title','')}. {e.get('summary','')}"
+            # Google News `summary` is an HTML blob (redirect <a> carrying a ~250-char
+            # base64 CBMi... token, &nbsp;, <font> outlet name) — ~70% of chars were markup,
+            # which the classifier paid tokens for and the embeddings clustered on. Strip it,
+            # same as fetch/rss_news.py already does.
+            summary = BeautifulSoup(e.get("summary", ""), "html.parser").get_text(" ", strip=True)
+            text = f"{e.get('title','')}. {summary}".strip()
             if not brand_match(text):        # Google News fuzzy-matches; drop off-brand hits
                 continue
             sid = "news:" + hashlib.md5(e.get("link", text).encode(), usedforsecurity=False).hexdigest()[:12]

@@ -1,4 +1,21 @@
+# X / Twitter import template — INTENTIONALLY EMPTY (no data rows).
+#
+# This file previously shipped 3 hand-written demo tweets. They were synthetic and were
+# being scored and counted as real customer sentiment (and inflating the newsroom reach
+# panel). They have been removed and are permanently blocklisted in fetch/twitter.py.
+#
+# PREFERRED X PATH: don't use this file at all. Top up ScrapeBadger credits and set
+# SCRAPEBADGER_API_KEY in .env — fetch/scrapebadger.py is the ToS-clean live X API source.
+#
+# To import an export instead, add one row per tweet under the header below:
+#   text        the tweet text                                     (required)
+#   author      handle, with or without @                          (recommended)
+#   url         https://x.com/<user>/status/<id>                   (REQUIRED - provenance)
+#   created_at  ISO 8601, e.g. 2026-07-02T10:43:53+00:00           (recommended)
+#   engagement  like count, integer                                (optional)
+#
+# Rows without a real X status id (>= 10 digits) are REFUSED, as are off-brand rows and
+# the old demo texts. Point TWITTER_CSV at another file to import from elsewhere.
+# Example of a valid row (delete this comment marker to use it):
+# "@AxisBank my UPI payment failed but the amount was debited",@someuser,https://x.com/someuser/status/2072632344914325929,2026-07-02T10:43:53+00:00,12
 text,author,url,created_at,engagement
-"Axis Bank UPI failed thrice today but amount debited, no response from support. Pathetic @AxisBank",@rahul_mumbai,https://x.com/rahul_mumbai/status/1,2026-07-02T08:10:00Z,180
-"Kudos to Axis Bank, my credit card dispute resolved in 2 days. Impressed",@priya_finance,https://x.com/priya_finance/status/2,2026-07-01T14:00:00Z,95
-"Beware: fake Axis Bank helpline number circulating on Google, lost money. @AxisBank please act",@cyber_aware,https://x.com/cyber_aware/status/3,2026-07-02T06:30:00Z,320
