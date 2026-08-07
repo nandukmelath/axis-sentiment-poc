@@ -4,6 +4,7 @@
 Run:  python -m analyze.exec_summary
 """
 import json
+import sys
 from collections import Counter
 from config import BRAND, GEMINI_MODEL, BRIEF_MODEL
 from db import init_db, df
@@ -85,6 +86,15 @@ def _template_brief(agg):
     return "\n".join(lines)
 
 
+def _echo(s):
+    """Print text that may contain non-cp1252 characters without ever raising."""
+    try:
+        print(s)
+    except UnicodeEncodeError:
+        enc = (getattr(sys.stdout, "encoding", None) or "ascii")
+        print(s.encode(enc, "replace").decode(enc, "replace"))
+
+
 def main():
     init_db()
     agg = aggregate()
@@ -100,8 +110,12 @@ def main():
     out = "exec_summary.md"
     with open(out, "w", encoding="utf-8") as f:
         f.write(md)
-    print(md[:400])
-    print(f"\n(saved to {out})")
+    # The FILE is utf-8, but stdout on Windows is cp1252 and the brief routinely contains
+    # characters it cannot encode (star ratings, em-dashes, rupee signs). A raw print here
+    # raised UnicodeEncodeError *after* the file was already written, so the harvest logged
+    # exec_brief as failed even though the brief on disk was fine. Echo defensively.
+    _echo(md[:400])
+    _echo(f"\n(saved to {out})")
 
 
 if __name__ == "__main__":

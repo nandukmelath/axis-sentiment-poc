@@ -71,11 +71,27 @@ Per source:
 | Mastodon | nothing | ✅ live |
 | YouTube | `YOUTUBE_API_KEY` (free) | ready |
 | **X / Twitter** | ScrapeBadger key (paid) or **CSV import** | ✅ via CSV |
+| **AmbitionBox** (Axis Bank **employee** reviews — India's Glassdoor) | nothing | ✅ live |
 
 Keyless-source facts learned live (2026-07-07): Reddit 403s `.json` for scripts but serves
 `.rss` with a browser UA; Moneycontrol RSS is frozen at Apr-2024 (staleness guard drops it);
 Business-Standard RSS is behind a hard 403 bot wall; ConsumerComplaints.in + MouthShut are
 Cloudflare-walled (would need a real browser — not worth it); GDELT enforces 1 request/5s.
+
+### AmbitionBox — the employee-sentiment channel (2026-08-07)
+Every other source in this pipeline is a *customer* speaking. AmbitionBox (Naukri-owned,
+India's Glassdoor) is the bank's own staff — 34.5k Axis Bank reviews, each with prose pros/cons
+and 7 sub-ratings (salary, promotions, job security, work-life balance, culture…). Probed live:
+**Glassdoor, Indeed and Quora all hard-403 a plain GET; AmbitionBox returns 200** and ships every
+review inside `__NEXT_DATA__`, so this needs no browser, no key and no ScrapeBadger credits —
+just the TLS-impersonated GET the other free sources already use. Paginates `?page=N` (21/page);
+the site pins one featured review to the top of *every* page, so the id-dedup is load-bearing.
+Timestamps are naive wall-clock **IST** and are converted to UTC on the way in (same trap as
+MouthShut) — reading them as UTC would push every employee review 5h30m into the future.
+
+First harvest (60 reviews) put employee negativity at **40.0% vs 21.9% for customers** — nearly
+double. Worth watching as a leading indicator: branch attrition shows up in service quality
+months before it reaches a customer complaint feed.
 
 ### X / Twitter — CSV import (default, `TWITTER_MODE=csv`)
 Free live X scraping is non-functional in 2026 (Nitter dead, X needs login). So drop tweets into **`fetch/twitter_import.csv`**:
@@ -140,6 +156,38 @@ python -m fetch.x_backfill --days 90 --window 7  # smaller
 python -m analyze.run_analyze                    # classify what landed
 ```
 Steps back week-by-week with `since:/until:`, upserts each window incrementally (progress survives interruption). **Honest limits:** X won't return a *complete* year for free (you get a strong sample); many heavy scrolls → rate-limit/ban risk (burner account); large volumes take a long time to classify on the Gemini free tier (the VADER cascade absorbs most).
+
+## MCP server — drive the whole system from any MCP client (BUILT)
+
+`mcp_server.py` exposes the entire stack as one MCP server: query the data, read any
+warehouse mart, and run the pipeline — from Claude Code, Claude Desktop, or any client.
+
+```bash
+python mcp_server.py                 # stdio
+# already registered for this project via .mcp.json; or globally:
+claude mcp add axis -- python /full/path/to/axis-sentiment-poc/mcp_server.py
+```
+
+**16 tools**
+
+| Query | Action |
+|---|---|
+| `system_status` — counts, providers, DB target | `fetch_sources(source?)` — pull new mentions |
+| `describe_schema(table?)` — 41 tables/views | `classify(phase, limit)` — VADER + LLM depth |
+| `search_mentions(...)` — text/source/sentiment/urgency/team/date filters | `rebuild_clusters()` |
+| `get_kpis` — headline metrics | `generate_exec_brief()` |
+| `get_issues(emerging_only?)` — clustered themes + spike flag | `build_warehouse(step?)` |
+| `priority_queue(limit)` — ranked action list | `run_pipeline(window?)` — end-to-end |
+| `get_mart(name)` — **any** mart/fact/dim in one tool | `backfill_x(days,...)` — ⚠ spends API credits |
+| `run_sql(sql)` — read-only SELECT | |
+| `get_exec_brief` | |
+
+**4 resources:** `axis://status` · `axis://schema` · `axis://kpis` · `axis://exec-brief`
+
+**Safety:** `run_sql` accepts a single `SELECT`/`WITH` only — write/DDL keywords and
+statement chaining are rejected. Set `AXIS_MCP_READONLY=1` to disable every action
+tool (query tools stay live). Long actions run as subprocesses with a timeout
+(`AXIS_MCP_TIMEOUT`, default 300s; `run_pipeline` 600s, `backfill_x` 900s).
 
 ## Free-tier reality (learned live)
 - Gemini free quota is **per-model, per-day**. `gemini-2.5-flash` daily cap is small; if you hit 429, switch `GEMINI_MODEL` to `gemini-2.5-flash-lite` (separate pool). ~5 req/min either way → client self-throttles.

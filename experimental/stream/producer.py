@@ -7,7 +7,9 @@ Run:  python -m stream.producer
 """
 import threading, time
 from db import init_db, upsert_posts
-from fetch import news, playstore, appstore, reddit, youtube, scrapebadger
+from fetch import (news, playstore, appstore, reddit, youtube, scrapebadger,
+                   linkedin, tiktok, instagram, facebook,
+                   consumercomplaints, mouthshut, trustpilot, googlereviews)
 from stream import bluesky, mastodon
 
 # (name, fetch_fn, interval_seconds)
@@ -18,6 +20,15 @@ POLLERS = [
     ("youtube", youtube.fetch, 900),
     ("appstore", appstore.fetch, 900),
     ("scrapebadger", scrapebadger.fetch, 120),   # X mentions via API
+    # ---- paid ScrapeBadger sources (added — credit thrift via longer intervals) ----
+    ("linkedin", linkedin.fetch, 900),           # social — company posts
+    ("tiktok", tiktok.fetch, 900),               # social — video search
+    ("instagram", instagram.fetch, 900),         # social — profile (login-wall risk)
+    ("facebook", facebook.fetch, 900),           # social — page (login-wall risk)
+    ("consumercomplaints", consumercomplaints.fetch, 3600),  # complaint threads — change slowly
+    ("mouthshut", mouthshut.fetch, 3600),        # reviews — change slowly
+    ("trustpilot", trustpilot.fetch, 3600),      # reviews — change slowly
+    ("googlereviews", googlereviews.fetch, 3600),  # branch reviews — change slowly
 ]
 
 

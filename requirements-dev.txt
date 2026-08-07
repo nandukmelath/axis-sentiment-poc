@@ -4,3 +4,11 @@
 fastapi>=0.110          # api/main.py — exercised by the API tests (TestClient)
 httpx>=0.27             # starlette TestClient transport (also pulled by openai)
 pytest>=8.0
+
+# Scrapling powers tools/scrapling_mcp.py (the "scrapling" MCP server in .mcp.json):
+# TLS-impersonating HTTP + stealth-browser fetchers used for exploratory scraping.
+# The [ai] extra is what ships the MCP server itself.
+# mcp is capped below 2.0 on purpose — scrapling 0.4.12 imports `mcp.server.fastmcp`,
+# which upstream removed in mcp 2.0 (scrapling issue #392).
+scrapling[ai]>=0.4.12
+mcp>=1.27,<2
