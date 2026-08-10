@@ -13,6 +13,22 @@ google-play-scraper>=1.2
 feedparser>=6.0
 google-api-python-client>=2.100
 beautifulsoup4>=4.12   # keyless HTML/RSS sources (technofino, reddit-RSS, rssnews)
+# fetch/run_fetch.py imports scrapling_sources.py and scrapling_stealth.py
+# UNCONDITIONALLY at module level — they are production fetchers (valuepickr,
+# businessstandard, ambitionbox, consumercomplaints; trustpilot/gmaps/mouthshut
+# stealth-browser sources), not an optional exploratory tool. Missing here means
+# fetch.run_fetch fails to IMPORT on a clean install — not just those two sources
+# failing, the WHOLE fetch step, since one import statement pulls in all 27
+# registered sources together.
+#
+# The [fetchers] extra is not optional: checked scrapling's own package metadata
+# directly (importlib.metadata, not guessed) — curl_cffi, playwright, patchright and
+# browserforge, which Fetcher/StealthyFetcher actually import, all live behind it.
+# Bare `scrapling` installs without them and both classes fail to import. [ai] (used
+# in requirements-dev.txt for the separate tools/scrapling_mcp.py MCP server) works
+# for the same reason: it depends on scrapling[fetchers] transitively, plus mcp and
+# markdownify that production fetching does not need.
+scrapling[fetchers]>=0.4.12
 
 # --- dashboard (Phase 4) ---
 streamlit>=1.30

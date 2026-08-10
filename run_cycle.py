@@ -4,10 +4,23 @@ This is what a scheduler should call. run_all.py is the full pipeline including
 clustering and the exec brief; run_cycle is the lighter beat that keeps the
 corpus and its engagement counts current.
 
-    fetch.run_fetch      new posts
-    fetch.refresh        re-poll engagement for posts inside the 24h window
-    analyze.run_analyze  score whatever arrived
-    analyze.run_categories  derived taxonomy (no tokens)
+    fetch.run_fetch          new posts
+    fetch.refresh            re-poll engagement for posts inside the 24h window
+    analyze.run_analyze      baseline pass (VADER, uncapped — see below)
+    analyze.run_analyze      LLM-depth pass (negatives/neutrals only, capped)
+    analyze.run_categories   derived taxonomy (no tokens)
+
+BASELINE IS UNCAPPED ON PURPOSE. It used to share one --limit 60 with the LLM
+pass, which caps BOTH stages identically — so on a fetch-heavy cycle, whatever
+did not fit in 60 got skipped entirely rather than at least lexicon-scored.
+Verified end-to-end on 2026-08-11: a real run (594 fetched) hit the DQ
+"analysis coverage >= 95%" gate at 91.5% (3157/3450), because 60 posts is
+comfortably short of what X's broadened discovery plus the newly-enabled
+stealth sources can bring in during one cycle. VADER is a local, instant,
+keyless pass — there is no cost reason to cap it, only the LLM-depth pass
+(real API calls, real rate limits) needs the conservative number. One
+uncapped baseline pass (293 posts, seconds) plus a categorise+rebuild took
+the same corpus to 3450/3450 — 100% — with zero additional LLM calls.
 
 SCHEDULING (pick one)
 
@@ -37,7 +50,8 @@ STEPS = [
     ["-c", "import db; db.init_db()"],
     ["-m", "fetch.run_fetch"],
     ["-m", "fetch.refresh"],
-    ["-m", "analyze.run_analyze", "--limit", "60"],
+    ["-m", "analyze.run_analyze", "--phase", "baseline"],        # uncapped, free
+    ["-m", "analyze.run_analyze", "--phase", "llm", "--limit", "60"],
     ["-m", "analyze.run_categories"],
 ]
 
