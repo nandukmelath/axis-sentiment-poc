@@ -386,48 +386,6 @@ def apply_lane(p, lane, answered_ids):
 
 
 # ----------------------------------------------------------------- thread reconstructor
-def table_view(d):
-    """Spreadsheet view: one row per post, sortable and exportable.
-
-    The card feed is built for reading a handful of posts closely; this is for
-    scanning hundreds and for getting the selection out into a spreadsheet.
-    Engagement columns are integers rather than the card's "1.1k" shorthand,
-    because the rounding that helps a card hurts a sort.
-    """
-    t = pd.DataFrame({
-        "Post": d["text_masked"].fillna(d["text"]).astype(str).str.slice(0, 300),
-        "Account": d["author_name"].fillna(d["author"]).fillna("—"),
-        "Source": d["source"],
-        "Category": d["issue_category"].map(lambda v: CATEGORY_LABEL.get(v, v or "—")),
-        "Impressions": pd.to_numeric(d["view_count"], errors="coerce").fillna(0).astype("int64"),
-        "Likes": pd.to_numeric(d["engagement"], errors="coerce").fillna(0).astype("int64"),
-        "Reshares": pd.to_numeric(d["retweet_count"], errors="coerce").fillna(0).astype("int64"),
-        "Comments": pd.to_numeric(d["reply_count"], errors="coerce").fillna(0).astype("int64"),
-        "Sentiment": d["sentiment"],
-        "Score": pd.to_numeric(d["score"], errors="coerce").round(2),
-        "Urgency": d["urgency"],
-        "Team": d["recommended_team"],
-        "Fraud": pd.to_numeric(d["fraud_signal"], errors="coerce").fillna(0) > 0,
-        "Churn": pd.to_numeric(d["churn_risk"], errors="coerce").fillna(0) > 0,
-        "Date": d["created_dt"],
-        "Link": d["url"],
-    })
-    st.dataframe(
-        t, use_container_width=True, hide_index=True, height=560,
-        column_config={
-            "Post": st.column_config.TextColumn("Tweet / post", width="large"),
-            "Link": st.column_config.LinkColumn("Link", display_text="open"),
-            "Date": st.column_config.DatetimeColumn("Date", format="DD MMM YYYY"),
-            "Score": st.column_config.NumberColumn("Score", format="%.2f"),
-            "Fraud": st.column_config.CheckboxColumn("Fraud"),
-            "Churn": st.column_config.CheckboxColumn("Churn"),
-        })
-    st.download_button("Download this selection (CSV)",
-                       t.to_csv(index=False).encode("utf-8"),
-                       file_name="axis_mentions.csv", mime="text/csv",
-                       key="nr_csv")
-
-
 def threads_panel(p, answered_ids):
     """A single post lies about context. Rebuild the conversation and you see the
     trajectory — where it started, who piled on, whether the bank ever showed up."""
@@ -635,13 +593,13 @@ def render():
                          "and shown dimmed with no emotion.")
 
     # ---- sort + view
+    # Feed only. The spreadsheet lives on its own surface (dashboard/explorer.py),
+    # which has room for every column instead of a squeezed subset.
     s = st.columns([0.3, 0.22, 0.48])
     sort_field = s[0].selectbox("Sort by", list(flt.SORT_FIELDS), key="nr_sortf",
                                 label_visibility="collapsed")
     direction = s[1].radio("Order", ["Desc", "Asc"], horizontal=True, key="nr_dir",
                            label_visibility="collapsed")
-    view = s[2].radio("View", ["Feed", "Table"], horizontal=True, key="nr_view",
-                      label_visibility="collapsed")
 
     asc = direction == "Asc"
     col = flt.SORT_FIELDS[sort_field]
@@ -653,10 +611,6 @@ def render():
     _eyebrow("The feed", f"{len(d):,} posts")
     if d.empty:
         st.info("No posts match this lane and filter combination.")
-        return
-
-    if view == "Table":
-        table_view(d)
         return
 
     PAGE = 25

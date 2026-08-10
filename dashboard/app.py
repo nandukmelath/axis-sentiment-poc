@@ -20,6 +20,7 @@ except Exception:
     pass
 
 import db
+import explorer
 import newsroom
 import overview
 import panels
@@ -53,13 +54,17 @@ if not _auth_gate():
 # one scrolling page answering "how is the bank performing". The operational
 # war-room + role tabs (and the pipeline RUN button) sit behind the second mode so
 # a reader can never trip a 15-minute fetch from the landing page.
-VIEW = st.sidebar.radio("View", ["Signal feed", "Performance dashboard", "Operations detail"],
+VIEW = st.sidebar.radio("View", ["Signal feed", "Performance dashboard", "Data explorer",
+                                 "Operations detail"],
                         key="_view", label_visibility="collapsed")
 if VIEW == "Signal feed":
     newsroom.render()
     st.stop()
 if VIEW == "Performance dashboard":
     overview.render()
+    st.stop()
+if VIEW == "Data explorer":
+    explorer.render()
     st.stop()
 
 SENT_COLORS = theme.SENT_COLORS
