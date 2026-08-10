@@ -1,17 +1,58 @@
-# Deploy — one box, one command
+# Deploy
 
-The whole system runs on a single machine: Postgres, the 2-hourly pipeline, and
-the dashboard, as three containers on one Docker network. No managed database, no
-external scheduler, no CI cron. One `docker compose up`, one `docker compose logs`
-when something breaks.
+Two supported paths. Both are ONE provider, one bill, one place to look when
+something breaks — the thing to avoid is stitching GitHub Actions + Neon +
+Streamlit Cloud together, which is free but gives you three services that fail
+independently and three consoles to check.
 
-That is a deliberate trade. Spreading this across GitHub Actions + Neon +
-Streamlit Cloud costs nothing but gives you three services that can fail
-independently, three consoles to check, three sets of credentials, and three
-different IP ranges for the scrapers to get blocked from. On one box there is one
-of each.
+| | **A — Render (managed)** | **B — one VM (Docker)** |
+|---|---|---|
+| You administer | nothing | OS, patches, backups |
+| Postgres | managed, backed up | a container you own |
+| Restart on crash | platform | `restart: unless-stopped` |
+| Cost | ~$21/mo | €3.79–$12/mo |
+| Config | `render.yaml` in repo | `docker-compose.yml` |
+| Escape hatch if IPs get blocked | limited | any proxy, any region |
+
+**Take A unless cost dominates.** It is the same three components, but patching,
+backups and restarts stop being your problem — which matters for something whose
+whole purpose is running unattended.
 
 ---
+
+# Path A — Render Blueprint
+
+`render.yaml` in the repo root defines all three services. Render reads it and
+provisions managed Postgres, a background worker running the 2h cycle, and the
+dashboard.
+
+1. Push the repo to GitHub.
+2. Render → **New → Blueprint** → pick the repo.
+3. Set the secrets it prompts for:
+   - `AXIS_DASH_PASSWORD` — **mandatory.** The dashboard is on a public URL and
+     shows complaints and masked PII.
+   - `GROQ_API_KEY` — else everything falls back to lexicon-only scoring.
+   - `CEREBRAS_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY` — optional failover.
+4. Deploy. `DATABASE_URL` is injected from the managed database; no connection
+   string is ever typed or committed.
+
+**Costs, honestly.** `starter` × 2 services + `basic-256mb` Postgres ≈ **$21/mo**.
+The free Postgres tier expires after 90 days and free web services sleep — a
+sleeping war-room dashboard is not a dashboard, so neither is used here.
+
+**Migrating the existing corpus:** copy `axis.db` up and run
+`python migrate_to_pg.py` from the Render shell with `DATABASE_URL` set, or start
+empty and let the pipeline build history.
+
+**The scheduler is a worker, not a cron job.** `run_cycle` owns its own 2h loop,
+so there is no external schedule that can silently stop firing.
+
+---
+
+# Path B — one VM
+
+Postgres, the pipeline and the dashboard as three containers on one Docker
+network. One `docker compose up`, one `docker compose logs`.
 
 ## 1. Get a machine
 

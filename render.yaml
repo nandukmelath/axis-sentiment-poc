@@ -1,0 +1,99 @@
+# Render Blueprint — the whole system as managed cloud services, no VM to administer.
+#
+# One file, one platform, one dashboard. Render reads this on connect and creates:
+#
+#   axis-db         managed Postgres (backups, patching, failover are theirs)
+#   axis-scheduler  background worker running the 2h cycle forever
+#   axis-dashboard  the Streamlit web service
+#
+# DATABASE_URL is injected from the managed database, so no connection string is
+# ever typed or committed.
+#
+# Deploy:  Render -> New -> Blueprint -> pick this repo. Set the three secrets it
+# prompts for (marked sync:false below) and it builds.
+#
+# Why this over a VPS: nothing to patch, nothing to back up by hand, and a crash
+# or OOM is restarted by the platform rather than by you noticing. Why this over
+# Actions+Neon+Streamlit Cloud: it is still ONE provider and one bill.
+
+databases:
+  - name: axis-db
+    databaseName: axis
+    user: axis
+    plan: basic-256mb          # free tier expires after 90 days — see DEPLOY.md
+    postgresMajorVersion: "16"
+
+services:
+  # ---- the 24/7 half -----------------------------------------------------
+  # A worker, not a cron job: run_cycle owns its own 2h loop, so there is no
+  # external schedule that can silently stop firing. Render restarts it on crash.
+  - type: worker
+    name: axis-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python run_cycle.py --loop
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: axis-db
+          property: connectionString
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: LLM_PROVIDER
+        value: groq
+      - key: LLM_FALLBACKS
+        value: cerebras,gemini,openrouter
+      - key: PII_MASK
+        value: "1"
+      - key: CASCADE
+        value: "1"
+      - key: REFRESH_INTERVAL_HOURS
+        value: "2"
+      - key: REFRESH_MAX_ITERATIONS
+        value: "12"
+      - key: TWITTER_MODE
+        value: auto
+      # Nitter instances rot. When X ingestion goes quiet, run
+      #   python -m fetch.twitter_live --probe
+      # from the Render shell and update this value.
+      - key: TWITTER_NITTER_INSTANCES
+        value: nitter.privacyredirect.com,nitter.perennialte.ch
+      # Chromium needs ~1GB; leave off unless the plan has room for it.
+      - key: STEALTH_SOURCES
+        value: "0"
+      # Secrets — set in the Render UI, never committed.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+  # ---- the dashboard -----------------------------------------------------
+  - type: web
+    name: axis-dashboard
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render assigns the port via $PORT; the Dockerfile CMD hardcodes 8501, which
+    # binds the wrong port and fails the health check. sh -c so $PORT expands —
+    # dockerCommand is exec'd, not shell-interpreted, without it.
+    dockerCommand: sh -c "streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port ${PORT:-8501}"
+    plan: starter              # do NOT use free here: free web services sleep,
+                               # and a sleeping war-room dashboard is not a dashboard
+    autoDeploy: true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: axis-db
+          property: connectionString
+      - key: PYTHONIOENCODING
+        value: utf-8
+      # Mandatory. The dashboard shows customer complaints and masked PII on a
+      # public URL; without this it is open to anyone who finds it.
+      - key: AXIS_DASH_PASSWORD
+        sync: false
