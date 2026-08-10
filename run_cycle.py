@@ -31,6 +31,10 @@ import time
 INTERVAL_SECONDS = 2 * 60 * 60
 
 STEPS = [
+    # Explicit, first. On a fresh Postgres the dashboard container can win the race
+    # to connect and query tables that no step has created yet; creating the schema
+    # up front makes first boot deterministic instead of dependent on start order.
+    ["-c", "import db; db.init_db()"],
     ["-m", "fetch.run_fetch"],
     ["-m", "fetch.refresh"],
     ["-m", "analyze.run_analyze", "--limit", "60"],

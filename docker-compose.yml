@@ -1,42 +1,76 @@
-# One command to run the whole system on Postgres:
-#   GEMINI_API_KEY=xxx docker compose up --build
-# Dashboard: http://localhost:8501
+# The whole system on one machine. No external services, no schedulers to wire up,
+# nothing to check in three different dashboards.
+#
+#   cp .env.docker.example .env && edit it
+#   docker compose up -d --build
+#
+# That is the deployment. Dashboard on :8501, Postgres on the internal network,
+# pipeline running itself every 2 hours. `docker compose logs -f` is the one place
+# to look when something breaks.
+#
+# Everything restarts on failure and on host reboot, so a crash or a power cycle
+# does not need a human.
+
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: axis
-      POSTGRES_PASSWORD: axis
-      POSTGRES_DB: axis
+      POSTGRES_USER: ${POSTGRES_USER:-axis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-axis}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Not published to the host. The only things that need Postgres are on this
+    # network already; exposing 5432 on a public box is how POCs get mined.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U axis"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-axis}"]
       interval: 5s
       timeout: 3s
       retries: 12
 
+  # The 24/7 half: fetch -> refresh engagement -> analyse -> categorise, every 2h.
+  # run_cycle owns its own loop, so there is no cron, no Actions schedule, and no
+  # second system that can silently stop firing.
+  scheduler:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-axis}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-axis}
+      PYTHONIOENCODING: utf-8
+    command: ["python", "run_cycle.py", "--loop"]
+
+  # The dashboard. Read-only against the same Postgres the scheduler writes.
   app:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://axis:axis@db:5432/axis
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-axis}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-axis}
+      PYTHONIOENCODING: utf-8
     ports:
-      - "8501:8501"
+      - "${DASHBOARD_PORT:-8501}:8501"
 
+  # Optional: the experimental streaming worker. Off by default — it is a second
+  # writer against the same tables and the 2h cycle already covers ingestion.
+  # Enable with: docker compose --profile streaming up -d
   stream:
     build: .
+    restart: unless-stopped
+    profiles: ["streaming"]
     depends_on:
       db:
         condition: service_healthy
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://axis:axis@db:5432/axis
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-axis}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-axis}
       CASCADE: "1"
     command: ["python", "-m", "stream.run_stream"]
 
