@@ -60,7 +60,11 @@ def main(argv=None):
 
     argv = list(sys.argv[1:] if argv is None else argv)
     http = "--http" in argv
-    host = _opt(argv, "--host", "0.0.0.0")
+    # Loopback by default — this is a local dev/exploratory tool, not something the
+    # production pipeline runs, and there is no reason --http should silently expose
+    # it network-wide the moment someone passes that flag on a shared or cloud dev
+    # box. Pass --host 0.0.0.0 explicitly for genuine container/remote-client access.
+    host = _opt(argv, "--host", "127.0.0.1")
     port = int(_opt(argv, "--port", "8000"))
     executable_path = _opt(argv, "--executable-path", None)
     auth_token = _opt(argv, "--auth-token", None)

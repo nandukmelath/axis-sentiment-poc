@@ -184,8 +184,10 @@ def _sid(status):
     host = (urlparse(uri).netloc or _PRIMARY).lower()
     ident = urlparse(uri).path.rstrip("/").rsplit("/", 1)[-1]
     if not ident.isdigit():                       # bridged/non-Mastodon ids: hash the whole uri
-        ident = hashlib.sha1(uri.encode("utf-8", "ignore")).hexdigest()[:16] if uri \
-            else str(status.get("id") or "")
+        # A short, stable dedup key, not a security boundary — usedforsecurity=False
+        # says exactly that to both bandit and anyone reading this later.
+        ident = hashlib.sha1(uri.encode("utf-8", "ignore"), usedforsecurity=False).hexdigest()[:16] \
+            if uri else str(status.get("id") or "")
     return f"mastodon:{ident}" if host == _PRIMARY else f"mastodon:{host}:{ident}"
 
 

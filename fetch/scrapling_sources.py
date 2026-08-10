@@ -191,7 +191,10 @@ def _bs_sid(href):
     if sid:
         return sid
     path = urlsplit(href or "").path.rstrip("/")     # drop query/fragment so ?utm=… dedupes
-    return "u" + hashlib.sha1(path.encode("utf-8")).hexdigest()[:16] if path else ""
+    # A short, stable dedup key, not a security boundary — usedforsecurity=False
+    # says exactly that to both bandit and anyone reading this later.
+    return "u" + hashlib.sha1(path.encode("utf-8"), usedforsecurity=False).hexdigest()[:16] \
+        if path else ""
 
 
 def _bs_iso_from_stamp(s):

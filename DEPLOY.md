@@ -47,6 +47,21 @@ Actions cron is best-effort and can fire 10–30 minutes late. That is fine here
 the engagement refresh schedules on **elapsed time**, not on the run being
 punctual, so a late run self-corrects rather than skipping a post's slot.
 
+Already wired into the workflow, nothing to configure:
+- **`STEALTH_SOURCES=1`** — the three Cloudflare-solving browser sources
+  (Trustpilot, MouthShut, Google Maps branch reviews) run here. They were
+  silently disabled in every earlier version of this pipeline — off by default,
+  and the workflow never turned them on — so this is new real signal, not a
+  restatement of something that already worked.
+- A `playwright install --with-deps chromium` step ahead of the cycle, without
+  which the line above would crash on first use. `requirements.txt` only
+  installs the Python package; the browser binary is a separate download.
+- Six X search queries plus direct `@AxisBank`/`@AxisBankSupport` timeline
+  fetches (`fetch/twitter_live.py`), round-robined across a Nitter instance pool
+  that refreshes itself from a live community health tracker — not the two
+  hardcoded hosts an earlier version shipped with. Override the floor under
+  that with `TWITTER_NITTER_INSTANCES` if it ever needs a manual nudge.
+
 ## 2. Database (Supabase)
 
 Create a free project, then **Settings → Database → Connection string → URI**.
@@ -186,8 +201,8 @@ Dashboard on `http://<server-ip>:8501`. Schema is created on first boot.
 
 ## 5. Move the existing corpus (optional)
 
-To carry the 3,097 scored posts across instead of starting empty, copy `axis.db`
-to the server and:
+To carry the existing scored posts across instead of starting empty, copy
+`axis.db` to the server and:
 
 ```bash
 docker compose run --rm scheduler python migrate_to_pg.py
@@ -223,13 +238,19 @@ Worth a weekly cron on the host.
 ## The one thing that will break
 
 **Nitter instances rot.** X discovery depends on volunteer instances, and of 23
-probed on 2026-08-10 only two served results. When X ingestion goes quiet:
+probed by hand on 2026-08-10 only two served results. `fetch/twitter_live.py`
+pulls a live healthy-instance list from a community tracker every run rather
+than relying on a hardcoded pair, so this mostly self-heals — but the tracker
+is itself a third party that can go down, and "healthy" there means "answers a
+ping," not "serves our specific whitelist-free search." When X ingestion goes
+quiet anyway:
 
 ```bash
 docker compose exec scheduler python -m fetch.twitter_live --probe
 ```
 
-Put the working hosts in `TWITTER_NITTER_INSTANCES` and
+That re-tests the live tracker's candidates AND the fixed floor together and
+prints what actually works. Put the survivors in `TWITTER_NITTER_INSTANCES` and
 `docker compose restart scheduler`. Per-tweet hydration (metrics, text, author)
 uses X's own endpoints and is unaffected — only *discovery* depends on Nitter.
 
