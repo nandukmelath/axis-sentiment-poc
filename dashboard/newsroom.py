@@ -31,8 +31,10 @@ import streamlit as st
 
 import db
 import theme
+import filters as flt
 from theme import T, SENT_COLORS
 from config import BRAND
+from analyze.categories import CATEGORY_LABEL
 
 POS, NEG, NEU = SENT_COLORS["positive"], SENT_COLORS["negative"], SENT_COLORS["neutral"]
 CRIT = "#C4544F"
@@ -72,7 +74,8 @@ def load():
                a.intent, a.urgency, a.urgency_reason, a.product, a.root_cause,
                a.recommended_team, a.recommended_action, a.churn_risk, a.fraud_signal,
                a.fraud_type, a.pii_present, a.text_masked, a.pii_types, a.theme,
-               a.summary, a.confidence, a.aspects_json, a.model
+               a.summary, a.confidence, a.aspects_json, a.model,
+               a.issue_category, a.category_reason
         FROM raw_posts r JOIN analysis a ON r.source_id = a.source_id""")
     if not posts.empty:
         posts["created_dt"] = pd.to_datetime(posts["created_at"], errors="coerce",
@@ -383,6 +386,48 @@ def apply_lane(p, lane, answered_ids):
 
 
 # ----------------------------------------------------------------- thread reconstructor
+def table_view(d):
+    """Spreadsheet view: one row per post, sortable and exportable.
+
+    The card feed is built for reading a handful of posts closely; this is for
+    scanning hundreds and for getting the selection out into a spreadsheet.
+    Engagement columns are integers rather than the card's "1.1k" shorthand,
+    because the rounding that helps a card hurts a sort.
+    """
+    t = pd.DataFrame({
+        "Post": d["text_masked"].fillna(d["text"]).astype(str).str.slice(0, 300),
+        "Account": d["author_name"].fillna(d["author"]).fillna("—"),
+        "Source": d["source"],
+        "Category": d["issue_category"].map(lambda v: CATEGORY_LABEL.get(v, v or "—")),
+        "Impressions": pd.to_numeric(d["view_count"], errors="coerce").fillna(0).astype("int64"),
+        "Likes": pd.to_numeric(d["engagement"], errors="coerce").fillna(0).astype("int64"),
+        "Reshares": pd.to_numeric(d["retweet_count"], errors="coerce").fillna(0).astype("int64"),
+        "Comments": pd.to_numeric(d["reply_count"], errors="coerce").fillna(0).astype("int64"),
+        "Sentiment": d["sentiment"],
+        "Score": pd.to_numeric(d["score"], errors="coerce").round(2),
+        "Urgency": d["urgency"],
+        "Team": d["recommended_team"],
+        "Fraud": pd.to_numeric(d["fraud_signal"], errors="coerce").fillna(0) > 0,
+        "Churn": pd.to_numeric(d["churn_risk"], errors="coerce").fillna(0) > 0,
+        "Date": d["created_dt"],
+        "Link": d["url"],
+    })
+    st.dataframe(
+        t, use_container_width=True, hide_index=True, height=560,
+        column_config={
+            "Post": st.column_config.TextColumn("Tweet / post", width="large"),
+            "Link": st.column_config.LinkColumn("Link", display_text="open"),
+            "Date": st.column_config.DatetimeColumn("Date", format="DD MMM YYYY"),
+            "Score": st.column_config.NumberColumn("Score", format="%.2f"),
+            "Fraud": st.column_config.CheckboxColumn("Fraud"),
+            "Churn": st.column_config.CheckboxColumn("Churn"),
+        })
+    st.download_button("Download this selection (CSV)",
+                       t.to_csv(index=False).encode("utf-8"),
+                       file_name="axis_mentions.csv", mime="text/csv",
+                       key="nr_csv")
+
+
 def threads_panel(p, answered_ids):
     """A single post lies about context. Rebuild the conversation and you see the
     trajectory — where it started, who piled on, whether the bank ever showed up."""
@@ -503,8 +548,12 @@ def render():
     highlight_rail(posts, answered_ids)
 
     # ---- category comparison: what each issue category actually looks like
+    # Grouped on issue_category, not intent. The panel was always titled "issue
+    # category" but grouped by intent, which conflated what a post DOES
+    # (complain) with what it is ABOUT (the branch).
     _eyebrow("Post by issue category", "volume, tone and severity per category")
-    cats = (posts.groupby("intent")
+    cats = (posts.assign(issue_category=posts["issue_category"].fillna("other"))
+            .groupby("issue_category")
             .agg(posts=("source_id", "size"), avg=("score", "mean"),
                  crit=("urgency", lambda s: int((s == "critical").sum())),
                  fraud=("fraud_signal", "sum"))
@@ -522,7 +571,7 @@ def render():
             padding:9px 11px">
           <div style="font-family:{T['mono']};font-size:9px;letter-spacing:.1em;
                       text-transform:uppercase;color:var(--muted)">
-            {INTENT_LABEL.get(c['intent'], c['intent'])}</div>
+            {CATEGORY_LABEL.get(c['issue_category'], c['issue_category'])}</div>
           <div style="font-family:{T['display']};font-size:1.25rem;font-weight:600;
                       color:var(--loud);margin:3px 0">{int(c['posts']):,}</div>
           <div style="font-family:{T['mono']};font-size:10px;color:{col}">{c['avg']:+.2f}</div>
@@ -536,27 +585,39 @@ def render():
     threads_panel(posts, answered_ids)
     influencer_panel()
 
+
     # ---- controls
-    _eyebrow("Browse by lane")
-    c = st.columns([0.34, 0.22, 0.22, 0.22])
+    _eyebrow("Filter section")
+    c = st.columns([0.26, 0.22, 0.22, 0.3])
     lane_label = c[0].selectbox("Lane", list(LANES), key="nr_lane",
                                 label_visibility="collapsed")
-    sort_mode = c[1].selectbox("Sort", ["Triage priority", "Newest", "Most reach",
-                                        "Most negative"], key="nr_sort",
-                               label_visibility="collapsed")
-    cat = c[2].selectbox("Category", ["All categories"]
-                         + [INTENT_LABEL.get(i, i) for i in
-                            posts["intent"].dropna().unique().tolist()],
-                         key="nr_cat", label_visibility="collapsed")
+
+    months = flt.month_options(posts)
+    month_pick = c[1].selectbox("Month", ["All months"] + [m for m, _ in months],
+                                key="nr_month", label_visibility="collapsed")
+    cat_opts = ["All categories"] + [CATEGORY_LABEL.get(k, k) for k in
+                                     sorted(posts["issue_category"].dropna().unique().tolist())]
+    cat = c[2].selectbox("Category", cat_opts, key="nr_cat", label_visibility="collapsed")
     q = c[3].text_input("Search", key="nr_q", placeholder="Search text…",
                         label_visibility="collapsed")
 
     d, caption = apply_lane(posts, LANES[lane_label], answered_ids)
+    if month_pick != "All months":
+        d = flt.apply_month(d, dict(months)[month_pick])
     if cat != "All categories":
-        inv = {v: k for k, v in INTENT_LABEL.items()}
-        d = d[d["intent"] == inv.get(cat, cat)]
+        inv = {v: k for k, v in CATEGORY_LABEL.items()}
+        d = d[d["issue_category"] == inv.get(cat, cat)]
     if q:
         d = d[d["text"].str.contains(q, case=False, na=False, regex=False)]
+
+    # ---- stacked conditions (the e-commerce-style builder)
+    with st.expander("More filters", expanded=bool(st.session_state.get("nr_filters"))):
+        active = flt.filter_builder(d)
+    d = flt.apply_all(d, active)
+    if active:
+        chips = " · ".join(x for x in (flt.describe(f) for f in active) if x)
+        if chips:
+            st.caption(f"Filters: {chips}")
 
     if caption:
         st.caption(caption)
@@ -573,19 +634,29 @@ def render():
                     help="Rows read by the LLM. The rest are lexicon-only — shallower, "
                          "and shown dimmed with no emotion.")
 
-    # ---- sort
-    if sort_mode == "Triage priority":
-        d = d.assign(_p=triage_score(d)).sort_values("_p", ascending=False)
-    elif sort_mode == "Newest":
-        d = d.sort_values("created_dt", ascending=False, na_position="last")
-    elif sort_mode == "Most reach":
-        d = d.sort_values("reach", ascending=False)
+    # ---- sort + view
+    s = st.columns([0.3, 0.22, 0.48])
+    sort_field = s[0].selectbox("Sort by", list(flt.SORT_FIELDS), key="nr_sortf",
+                                label_visibility="collapsed")
+    direction = s[1].radio("Order", ["Desc", "Asc"], horizontal=True, key="nr_dir",
+                           label_visibility="collapsed")
+    view = s[2].radio("View", ["Feed", "Table"], horizontal=True, key="nr_view",
+                      label_visibility="collapsed")
+
+    asc = direction == "Asc"
+    col = flt.SORT_FIELDS[sort_field]
+    if col is None:                       # triage priority is computed, not stored
+        d = d.assign(_p=triage_score(d)).sort_values("_p", ascending=asc)
     else:
-        d = d.sort_values("score", ascending=True)
+        d = d.sort_values(col, ascending=asc, na_position="last")
 
     _eyebrow("The feed", f"{len(d):,} posts")
     if d.empty:
         st.info("No posts match this lane and filter combination.")
+        return
+
+    if view == "Table":
+        table_view(d)
         return
 
     PAGE = 25

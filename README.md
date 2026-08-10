@@ -107,6 +107,45 @@ text,author,url,created_at,engagement
   Scale fetch caps with `FETCH_MULT=8`.
 - Competitor SOV (HDFC/ICICI/SBI/Kotak) is built in (`analytics/competitor.py`, runs inside harvest).
 
+## The 2-hourly cycle + engagement refresh (BUILT)
+A post's text is final when published; its engagement is not. `run_cycle.py` is the
+beat a scheduler should call:
+
+```
+python run_cycle.py            # one pass: fetch -> refresh -> analyze -> categorise
+python run_cycle.py --loop     # same, every 2h, foreground (demo box only)
+```
+
+Every post is enrolled for **12 refresh passes at 2h = 24h of coverage**, then retires.
+Each pass appends to `engagement_history` (never overwrites) so the growth *curve*
+survives — velocity is the early warning; a final total only tells you a crisis
+already happened. Latest counts are also upserted onto `raw_posts` via COALESCE, so a
+partial response can never blank a metric an earlier pass captured.
+
+Only sources with a keyless per-post metrics lookup can refresh honestly:
+**reddit** (Arctic Shift), **hackernews** (Firebase), **mastodon** (public status API).
+Everything else is registered with a stated reason and skipped rather than faked —
+Twitter included, since live X scraping is dead and the API tier that would serve it
+is paid. `python -m fetch.refresh --status` prints exactly what is live and what is not.
+
+Schedule it with Task Scheduler (`/sc hourly /mo 2`) or cron (`0 */2 * * *`).
+
+## Issue categories (BUILT)
+A second axis beside `intent`. Intent is what a post *does* (complain, ask, praise);
+category is what it is *about*, which decides who picks it up. Derived deterministically
+from the LLM's own fields plus text — so it applies retroactively to the whole corpus
+with no re-run, every assignment is explainable (`category_reason` records the rule that
+fired), and labels do not drift between runs.
+
+`scam · fraud · employee · branch · response_gap · technical_issue · charges_dispute ·
+mis_selling · service_delay · market_news · praise · other`
+
+Category is a **topic, not a polarity**. An early cut keyed `branch_complaint` came out
+71 positive to 35 negative — a five-star branch review is not a complaint. "Branch
+complaints" is therefore `category=branch` + `sentiment=negative`, which the filter bar
+composes in two clicks. Recompute after editing a rule with
+`python -m analyze.run_categories --all`.
+
 ## Phase 5 — streaming, Postgres/Docker, cost cascade (BUILT)
 
 ### Streaming pipeline (decoupled producer + worker)
