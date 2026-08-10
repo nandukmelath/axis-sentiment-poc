@@ -255,8 +255,27 @@ def _from_csv():
     return rows
 
 
+def _live():
+    """Keyless live acquisition — see fetch/twitter_live.py.
+
+    Nitter RSS finds the tweets; X's own syndication endpoint (the one the
+    embedded-tweet widget calls) returns authoritative text, author, timestamp,
+    likes and replies. Replaces the dead ntscraper path, which relied on
+    instances that all fail health-check now.
+    """
+    try:
+        from fetch import twitter_live
+    except ImportError as e:
+        print(f"  [twitter] live module unavailable: {str(e)[:80]}")
+        return []
+    rows = twitter_live.fetch(limit=FETCH_LIMITS.get("twitter"))
+    return [r for r in rows if _on_brand(r.get("text", ""))]
+
+
 def _scrape():
-    """Dead upstream: ntscraper's Nitter instances all fail health-check. Kept as a stub."""
+    """Legacy ntscraper path. Dead upstream — every instance it knows about fails
+    health-check. Kept only so TWITTER_MODE=scrape does not break for anyone
+    pinning it; _live() is the working path."""
     rows = []
     try:
         from ntscraper import Nitter
@@ -293,12 +312,17 @@ def _scrape():
 def fetch():
     """Return X rows from the operator's CSV export. Never raises; [] on any failure."""
     try:
-        mode = (TWITTER_MODE or "csv").lower()
+        mode = (TWITTER_MODE or "live").lower()
         if mode == "csv":
             return _from_csv()
         if mode == "scrape":
             return _scrape()
-        rows = _scrape()                      # auto
+        if mode == "live":
+            return _live()
+        # auto (default): live first, CSV only as a backstop. The CSV goes stale
+        # the moment the operator stops exporting — the corpus sat frozen at
+        # 2026-07-02 for five weeks because this used to be CSV-first.
+        rows = _live()
         return rows if rows else _from_csv()
     except Exception as e:                    # contract: never raise
         print(f"  [twitter] 0 — unexpected error: {type(e).__name__}: {str(e)[:100]}")

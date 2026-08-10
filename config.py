@@ -54,7 +54,9 @@ APPSTORE_SEARCH = "Axis Mobile"                                # auto-resolve iO
 FB_PAGE = os.getenv("FB_PAGE", "AxisBank")                     # ScrapeBadger web-scrape target; login-wall risk
 # X/Twitter ingestion mode: 'csv' (import fetch/twitter_import.csv — reliable, default),
 # 'scrape' (free Nitter scraper — usually dead in 2026), 'auto' (scrape then csv fallback).
-TWITTER_MODE = os.getenv("TWITTER_MODE", "csv")
+# auto = live (Nitter discovery + X syndication hydration), CSV only as a backstop.
+# Was "csv", which left the corpus frozen whenever the operator stopped exporting.
+TWITTER_MODE = os.getenv("TWITTER_MODE", "auto")
 
 # ---- streaming firehoses (Phase 5) ----
 MASTODON_INSTANCE = os.getenv("MASTODON_INSTANCE", "mastodon.social")
