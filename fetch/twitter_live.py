@@ -4,8 +4,9 @@ X killed the free API and the public search page needs a logged-in session, so
 there is no single endpoint that both FINDS tweets and returns full data. This
 module uses two, each doing the half it is good at:
 
-  DISCOVERY   Nitter RSS search  ->  tweet ids + rough text
-  HYDRATION   cdn.syndication.twimg.com/tweet-result  ->  authoritative fields
+  DISCOVERY   Nitter RSS search                    ->  tweet ids + rough text
+  HYDRATION   api.twitter.com GraphQL + guest token ->  every field, incl. reach
+              cdn.syndication.twimg.com             ->  fallback, no reach
 
 Discovery is the fragile half. Nitter instances die constantly — of 23 probed on
 2026-08-10 only two served results, the rest returned 403 (Anubis JS challenge),
@@ -13,18 +14,28 @@ Discovery is the fragile half. Nitter instances die constantly — of 23 probed 
 failing instance dropped for the rest of the run. Expect to update INSTANCES; the
 `--probe` flag re-tests the pool and prints what is alive.
 
-Hydration is the solid half and the reason this works at all.
-cdn.syndication.twimg.com is the endpoint X's own embedded-tweet widget calls, so
-it is public, keyless and stable. It returns the real text (not Nitter's
-truncated title), the real author, the real timestamp, likes and reply count.
-The `token` query param is NOT validated — any value returns 200 — but it is
-required to be present.
+HYDRATION — GraphQL first
+X's web client authenticates logged-out users with a GUEST token: POST to
+/1.1/guest/activate.json against the public web bearer (a constant in X's JS
+bundle, identifying the client, not a user) and it mints one. That token opens
+TweetResultByRestId, which returns the full legacy object:
 
-WHAT IT DOES NOT GIVE
-Syndication omits retweet_count, quote_count and view_count. Those stay null
-rather than being guessed. Nitter's RSS does not carry them either. If you need
-reshare counts, that is the paid API or nothing, and the dashboard already labels
-reach as Twitter-only for exactly this reason.
+    retweet_count · quote_count · bookmark_count · views.count
+    favorite_count · reply_count · full_text · author · created_at
+
+Measured 2026-08-10: 60/60 lookups returned HTTP 200 with no rate-limiting at
+~0.4s spacing, 56 with complete metrics and 4 tombstoned (deleted or protected).
+
+The catch is the query id in the URL. It is pinned per web-client build and
+rotates every few months; when it stops resolving, hydration falls back to
+syndication rather than failing the run, and TWITTER_GRAPHQL_QID overrides it.
+
+HYDRATION — syndication fallback
+cdn.syndication.twimg.com is what the embedded-tweet widget calls: public,
+keyless, and far more stable than the GraphQL query id. It carries text, author,
+timestamp, likes and replies but NOT reshares, quotes or views — those stay null
+on this path rather than being zeroed, so a missing metric can never be mistaken
+for a measured zero. The `token` param is required but not validated.
 
 Why not just the CSV? Because it goes stale the moment the operator stops
 exporting — the corpus sat frozen at 2026-07-02 for five weeks. This path is
@@ -33,6 +44,7 @@ unattended.
 import argparse
 import datetime as dt
 import html as _html
+import json
 import os
 import re
 import sys
@@ -50,6 +62,46 @@ INSTANCES = [h.strip() for h in os.getenv(
     "nitter.privacyredirect.com,nitter.perennialte.ch").split(",") if h.strip()]
 
 SYNDICATION = "https://cdn.syndication.twimg.com/tweet-result"
+
+# X's own web client calls this with a GUEST token — no account, no API key. It is
+# the only keyless source of retweet_count, quote_count, bookmark_count and views,
+# none of which the syndication endpoint exposes.
+#
+# The public web bearer is a constant shipped in X's JS bundle; it identifies the
+# web client, not a user. /guest/activate.json mints a short-lived guest token
+# against it, exactly as a logged-out browser does.
+GRAPHQL_BEARER = ("AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs"
+                  "%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
+GUEST_ACTIVATE = "https://api.twitter.com/1.1/guest/activate.json"
+# Query ids are pinned per client build and rotate every few months. When this 404s,
+# the fetch falls back to syndication rather than dying; override via env.
+GRAPHQL_QUERY_ID = os.getenv("TWITTER_GRAPHQL_QID", "0hWvDhmW8YQ-S_ib3azIrw")
+GRAPHQL_URL = f"https://api.twitter.com/graphql/{GRAPHQL_QUERY_ID}/TweetResultByRestId"
+
+# Required by the endpoint; omitting any key returns 400. Values mirror a logged-out
+# web client. view_counts_everywhere_api_enabled is the one that matters — without it
+# the `views` object comes back absent.
+GRAPHQL_FEATURES = {
+    "creator_subscriptions_tweet_preview_api_enabled": True,
+    "tweetypie_unmention_optimization_enabled": True,
+    "responsive_web_edit_tweet_api_enabled": True,
+    "graphql_is_translatable_rweb_tweet_is_translatable_enabled": True,
+    "view_counts_everywhere_api_enabled": True,
+    "longform_notetweets_consumption_enabled": True,
+    "responsive_web_twitter_article_tweet_consumption_enabled": False,
+    "tweet_awards_web_tipping_enabled": False,
+    "freedom_of_speech_not_reach_fetch_enabled": True,
+    "standardized_nudges_misinfo": True,
+    "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
+    "longform_notetweets_rich_text_read_enabled": True,
+    "longform_notetweets_inline_media_enabled": True,
+    "responsive_web_graphql_exclude_directive_enabled": True,
+    "verified_phone_label_enabled": False,
+    "responsive_web_media_download_video_enabled": False,
+    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+    "responsive_web_graphql_timeline_navigation_enabled": True,
+    "responsive_web_enhance_cards_enabled": False,
+}
 
 # Nitter's RSS gate rejects browser User-Agents on some instances — it wants to look
 # like a feed reader. This is not evasion; it is the client type the endpoint serves.
@@ -149,6 +201,72 @@ def _syndication_token(tid):
         return "a"
 
 
+def graphql_session():
+    """A requests.Session carrying a fresh guest token."""
+    s = requests.Session()
+    s.headers.update({"User-Agent": WEB_HEADERS["User-Agent"],
+                      "Authorization": f"Bearer {GRAPHQL_BEARER}"})
+    try:
+        r = s.post(GUEST_ACTIVATE, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return None
+        s.headers["x-guest-token"] = r.json()["guest_token"]
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+    return s
+
+
+def hydrate_graphql(tid, session):
+    """Full metrics for one tweet, or None.
+
+    Returns retweet/quote/bookmark/view counts that syndication does not carry.
+    None means "ask syndication instead" — a deleted or protected tweet comes back
+    as a Tombstone with no legacy block, and so does a rotated query id.
+    """
+    if session is None:
+        return None
+    try:
+        r = session.get(GRAPHQL_URL, timeout=TIMEOUT, params={
+            "variables": json.dumps({"tweetId": str(tid), "withCommunity": False,
+                                     "includePromotedContent": False, "withVoice": False}),
+            "features": json.dumps(GRAPHQL_FEATURES)})
+        if r.status_code != 200:
+            return None
+        res = (((r.json() or {}).get("data") or {}).get("tweetResult") or {}).get("result") or {}
+    except (requests.RequestException, ValueError):
+        return None
+
+    leg = res.get("legacy") or {}
+    if not leg:
+        return None
+    user = (((res.get("core") or {}).get("user_results") or {}).get("result") or {})
+    uleg = user.get("legacy") or {}
+    views = res.get("views") or {}
+
+    def _int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "id": str(res.get("rest_id") or tid),
+        "text": leg.get("full_text") or "",
+        "author": uleg.get("screen_name") or (user.get("core") or {}).get("screen_name") or "",
+        "author_name": uleg.get("name") or (user.get("core") or {}).get("name") or "",
+        "created_at": leg.get("created_at") or "",
+        "lang": leg.get("lang") or "",
+        "engagement": _int(leg.get("favorite_count")),
+        "reply_count": _int(leg.get("reply_count")),
+        "retweet_count": _int(leg.get("retweet_count")),
+        "quote_count": _int(leg.get("quote_count")),
+        "bookmark_count": _int(leg.get("bookmark_count")),
+        # views is {"count": "7451", "state": ...} and absent on older tweets
+        "view_count": _int(views.get("count")),
+        "conversation_id": leg.get("conversation_id_str") or str(tid),
+    }
+
+
 def hydrate(tid, session=None):
     """Authoritative fields for one tweet, or None if X will not serve it
     (deleted, protected, or suspended author)."""
@@ -184,11 +302,18 @@ def hydrate(tid, session=None):
 
 # ------------------------------------------------------------------ public
 def _iso(s):
-    """Nitter pubDate -> ISO8601. Syndication already returns ISO."""
+    """Normalise every date shape the three sources emit to ISO8601 UTC.
+
+    Syndication returns ISO already. Nitter emits RFC-822 pubDate. GraphQL emits
+    Twitter's legacy format ("Mon Aug 10 07:28:08 +0000 2026") — no comma, year
+    last — which none of the RFC-822 patterns match, so it has to be listed
+    explicitly or it lands in the DB as an unparseable string.
+    """
     if not s:
         return None
     s = s.strip()
-    for fmt in ("%a, %d %b %Y %H:%M:%S %Z", "%a, %d %b %Y %H:%M:%S %z",
+    for fmt in ("%a %b %d %H:%M:%S %z %Y",                 # GraphQL / Twitter legacy
+                "%a, %d %b %Y %H:%M:%S %Z", "%a, %d %b %Y %H:%M:%S %z",
                 "%a, %d %b %Y %H:%M %Z", "%a, %d %b %Y %H:%M"):
         try:
             d = dt.datetime.strptime(s, fmt)
@@ -210,17 +335,28 @@ def fetch(queries=None, limit=None, verbose=True):
         return []
 
     ids = list(found)[:limit or MAX_HYDRATE]
-    rows, hydrated = [], 0
+    rows, hydrated, via_gql = [], 0, 0
+    gql = graphql_session()
+    if gql is None and verbose:
+        print("  [x] guest-token activation failed — falling back to syndication "
+              "(no reshare/quote/view counts)")
     with requests.Session() as sess:
         for tid in ids:
             base = found[tid]
-            h = hydrate(tid, sess)
+            # GraphQL first: it is the only keyless source of reshares/quotes/views.
+            h = hydrate_graphql(tid, gql)
+            if h:
+                via_gql += 1
+            else:
+                h = hydrate(tid, sess)
             time.sleep(HYDRATE_PAUSE)
             if h:
                 hydrated += 1
                 text = h["text"] or base["text"]
                 author = h["author"] or base["author"]
-                created = h["created_at"] or _iso(base["created_at"])
+                # Always through _iso: GraphQL and syndication use different date
+                # formats, and only one of them is already ISO.
+                created = _iso(h["created_at"]) or _iso(base["created_at"])
             else:
                 text, author = base["text"], base["author"]
                 created = _iso(base["created_at"])
@@ -241,14 +377,17 @@ def fetch(queries=None, limit=None, verbose=True):
                 "lang": (h or {}).get("lang") or "",
                 "engagement": (h or {}).get("engagement"),
                 "reply_count": (h or {}).get("reply_count"),
-                "retweet_count": None,      # not exposed by either endpoint
-                "quote_count": None,
-                "view_count": None,
+                # Present only on the GraphQL path; None (not 0) on syndication, so a
+                # missing metric never masquerades as a measured zero.
+                "retweet_count": (h or {}).get("retweet_count"),
+                "quote_count": (h or {}).get("quote_count"),
+                "view_count": (h or {}).get("view_count"),
+                "bookmark_count": (h or {}).get("bookmark_count"),
                 "conversation_id": (h or {}).get("conversation_id") or tid,
             })
     if verbose:
-        print(f"  [x] discovered {len(found)}, hydrated {hydrated}, "
-              f"kept {len(rows)} on-brand")
+        print(f"  [x] discovered {len(found)}, hydrated {hydrated} "
+              f"({via_gql} with full metrics via GraphQL), kept {len(rows)} on-brand")
     return rows
 
 

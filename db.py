@@ -351,6 +351,26 @@ def drop_snapshots(tables=GATED_TABLES):
         execute(f'DROP TABLE IF EXISTS "{t}__bak"')
 
 
+def set_tweet_metrics(rows):
+    """Fill engagement metrics on stored tweets (fetch/twitter_backfill.py).
+
+    COALESCE on every metric: a tweet whose view count X no longer serves must
+    keep the value we already have rather than be blanked by a partial response.
+    """
+    if not rows:
+        return 0
+    with _engine.begin() as c:
+        c.execute(text("""UPDATE raw_posts SET
+                            retweet_count  = COALESCE(:retweet_count, retweet_count),
+                            quote_count    = COALESCE(:quote_count, quote_count),
+                            view_count     = COALESCE(:view_count, view_count),
+                            bookmark_count = COALESCE(:bookmark_count, bookmark_count),
+                            engagement     = COALESCE(:engagement, engagement),
+                            reply_count    = COALESCE(:reply_count, reply_count)
+                          WHERE source_id = :source_id"""), rows)
+    return len(rows)
+
+
 def bump_refresh(rows):
     """Apply one engagement-refresh pass. Metric columns use COALESCE so a source
     that reports likes but not views cannot blank out a view count another pass

@@ -154,24 +154,29 @@ def _mastodon(ids):
 # Sources with a keyless per-post metrics lookup. Absence here is deliberate and
 # visible via --status, not an oversight.
 def _twitter(ids):
-    """X's syndication endpoint — the one the embedded-tweet widget calls. Public,
-    keyless, and it serves any tweet by id.
+    """X GraphQL with a guest token, falling back to syndication.
 
     This was previously written off as impossible because live X *search* is dead.
     Search and per-tweet lookup turn out to be different problems: search needs a
-    session, lookup does not. Likes and replies refresh; retweets, quotes and
-    views are not exposed and stay null rather than being guessed.
+    logged-in session, lookup does not.
+
+    The GraphQL path is the only keyless source of retweet/quote/view counts, so
+    it runs first; syndication covers the tweets it cannot serve, with those three
+    left null rather than zeroed.
     """
-    from fetch.twitter_live import hydrate
+    from fetch.twitter_live import graphql_session, hydrate, hydrate_graphql
 
     out = {}
+    gql = graphql_session()
     with requests.Session() as sess:
         for sid in ids:
             tid = sid.split(":", 1)[-1]
-            h = hydrate(tid, sess)
+            h = hydrate_graphql(tid, gql) or hydrate(tid, sess)
             if h:
-                out[tid] = {"likes": h.get("engagement"), "comments": h.get("reply_count"),
-                            "reshares": None, "views": None}
+                out[tid] = {"likes": h.get("engagement"),
+                            "comments": h.get("reply_count"),
+                            "reshares": h.get("retweet_count"),
+                            "views": h.get("view_count")}
             time.sleep(0.25)
     return out
 
