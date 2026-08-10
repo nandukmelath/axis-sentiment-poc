@@ -78,10 +78,8 @@ services:
     name: axis-dashboard
     runtime: docker
     dockerfilePath: ./Dockerfile
-    # Render assigns the port via $PORT; the Dockerfile CMD hardcodes 8501, which
-    # binds the wrong port and fails the health check. sh -c so $PORT expands —
-    # dockerCommand is exec'd, not shell-interpreted, without it.
-    dockerCommand: sh -c "streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port ${PORT:-8501}"
+    # No dockerCommand override needed: the Dockerfile CMD now binds ${PORT:-8501}
+    # in shell form, so Render's assigned port is picked up automatically.
     plan: starter              # do NOT use free here: free web services sleep,
                                # and a sleeping war-room dashboard is not a dashboard
     autoDeploy: true

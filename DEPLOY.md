@@ -6,11 +6,11 @@ Three supported paths.
 |---|---|---|---|
 | Cost | **$0** | ~$21/mo | €3.79–$12/mo |
 | Pipeline compute | GitHub Actions, **unmetered** | worker | container |
-| Database | Neon free, 0.5 GB | managed PG | container |
-| Dashboard | Streamlit Cloud | web service | container |
+| Database | Supabase free, 500 MB | managed PG | container |
+| Dashboard | HF Spaces (48h idle) | web service | container |
 | You administer | nothing | nothing | OS, patches, backups |
 | Consoles to check | 3 | 1 | 1 |
-| Real ceiling | Neon 100 CU-hours/mo | none | RAM/disk |
+| Real ceiling | none that triggers | none | RAM/disk |
 
 **Take A.** GitHub-hosted standard runners are free and *unmetered on public
 repositories* — and this repo is public, so the pipeline has no practical limit:
@@ -19,7 +19,8 @@ closest thing to "unlimited 24/7" that exists for free.
 
 The honest cost of A is three consoles instead of one. Everything in it is
 already written — `.github/workflows/pipeline.yml` runs the cycle, `db.py` speaks
-Postgres, and `requirements.txt` is already tuned for Streamlit Cloud.
+Postgres with the Supabase pooler already accounted for, and the Dockerfile binds
+`${PORT}` so any managed host can run the dashboard.
 
 ---
 
@@ -32,7 +33,7 @@ secrets under **Settings → Secrets and variables → Actions**:
 
 | Secret | Why |
 |---|---|
-| `DATABASE_URL` | the Neon connection string from step 2 |
+| `DATABASE_URL` | the Supabase pooled connection string from step 2 |
 | `GROQ_API_KEY` | else everything falls back to lexicon-only scoring |
 | `CEREBRAS_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | optional failover |
 
@@ -46,34 +47,62 @@ Actions cron is best-effort and can fire 10–30 minutes late. That is fine here
 the engagement refresh schedules on **elapsed time**, not on the run being
 punctual, so a late run self-corrects rather than skipping a post's slot.
 
-## 2. Database (Neon)
+## 2. Database (Supabase)
 
-Create a free project, copy the pooled connection string into `DATABASE_URL` (as
-an Actions secret and a Streamlit secret), then move the corpus:
+Create a free project, then **Settings → Database → Connection string → URI**.
+Take the **pooled** (supavisor) string, not the direct one, and change the scheme
+to `postgresql+psycopg2://`:
 
-```bash
-DATABASE_URL='postgresql+psycopg2://...neon.tech/...?sslmode=require' python migrate_to_pg.py
+```
+postgresql+psycopg2://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
-Run `python -m tools.fix_dates` **first** or the RFC-822 date corruption migrates
-with the data.
+`db.py` is already tuned for that pooler — `pool_pre_ping`, `pool_recycle=1800`
+and a bounded pool of 5+5, which stays under the free-tier connection cap with
+one engine per process (Actions run + dashboard).
 
-**The one real ceiling in this stack:** Neon free gives 0.5 GB storage and
-**100 compute-hours/month**. Storage is a non-issue — the corpus is 16 MB, 3% of
-the allowance. Compute is the thing to watch: Neon autosuspends after 5 minutes
-idle, and the dashboard's live fragments are cached at 30-minute TTL so they do
-not hold it awake. Normal demo use lands comfortably inside 100 CU-hours; leaving
-the dashboard open all day for weeks would not. If you exceed it, that is the
-signal to move to Path B or C.
+Migrate the corpus:
 
-## 3. Dashboard (Streamlit Community Cloud)
+```bash
+python -m tools.fix_dates          # FIRST — or the RFC-822 dates migrate too
+DATABASE_URL='postgresql+psycopg2://...pooler.supabase.com:5432/postgres?sslmode=require' \
+  python migrate_to_pg.py
+```
 
-Point it at this repo, `dashboard/app.py`, and set two secrets:
-`DATABASE_URL` and `AXIS_DASH_PASSWORD`.
+**Why Supabase over Neon here.** Supabase free pauses a project after **one week
+of inactivity**, which sounds disqualifying until you notice the pipeline writes
+every two hours — it is never idle for a week, so the pause never fires. What it
+does *not* have is Neon's **100 compute-hours/month** cap, which was the only
+real ceiling in this stack. Trading a limit that cannot trigger for one that
+could is the right way round.
 
-Free apps sleep after 12 hours without traffic and wake on the next visit — fine
-for a demo, wrong for a wall-mounted war-room screen. 1 GB RAM, unlimited public
-apps.
+Free tier: 500 MB database, 2 projects. The corpus is 16 MB — 3% of it.
+
+## 3. Dashboard (Hugging Face Spaces)
+
+Streamlit Community Cloud sleeps after **12 hours** without traffic, which is
+what makes it feel unreliable. The 2026 landscape for the rest:
+
+| Host | Free? | Sleeps after | RAM |
+|---|---|---|---|
+| **Hugging Face Spaces** | yes | **48h** idle | 2 vCPU / 16 GB |
+| Streamlit Community Cloud | yes | 12h idle | 1 GB |
+| Render free web service | yes | **15 min** idle | 512 MB |
+| Railway Hobby | $5/mo | **never** | 8 GB |
+| Fly.io | no free tier since 2026 | never | — |
+| Koyeb | free tier closed (Mistral acquisition) | — | — |
+
+**Take Hugging Face Spaces.** Free, 16× the RAM of Streamlit Cloud, and a 48-hour
+idle window instead of 12 — any regular use keeps it up. Deployment card and
+steps: [`deploy/huggingface/README.md`](deploy/huggingface/README.md).
+
+**If it must never sleep** — a wall-mounted screen, or a client link that has to
+work cold at any hour — that is Railway Hobby at $5/mo. It is the only remaining
+platform with a genuinely always-on cheap tier; Fly killed its free tier and
+Koyeb closed theirs entirely.
+
+Nothing is stored on the dashboard host either way. All state is in Supabase, so
+a sleeping app loses nothing but the cold start.
 
 ---
 
