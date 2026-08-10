@@ -35,6 +35,27 @@ def test_gmaps_is_branch():
     assert derive(row(text="great service", source="gmaps")) == "branch"
 
 
+# ---------------------------------------------------------------- employee precision
+def test_customer_describing_staff_is_not_employee_feedback():
+    """A customer saying the branch employee was rude is a service complaint, not
+    workplace feedback. Bare 'employee'/'staff'/'manager' matching mislabelled 27
+    of the first 50 live tweets."""
+    r = row(text="the employee at the Axis branch was extremely rude to me")
+    assert derive(r) == "branch"
+
+
+def test_own_employer_mentioned_for_eligibility_is_not_employee():
+    """Reddit users name their employer to ask about loan eligibility; that is not
+    a complaint about working at the bank."""
+    r = row(text="I work at Infosys, am I eligible for an Axis credit card?")
+    assert derive(r) != "employee"
+
+
+def test_genuine_first_person_employment_at_brand_is_employee():
+    r = row(text="I was working at @AxisBank Bangalore Currency Chest for 14 years")
+    assert derive(r) == "employee"
+
+
 # ---------------------------------------------------------------- word boundaries
 def test_atm_does_not_match_inside_another_word():
     """Substring matching put every post containing 'format' into Branch & ATM."""
@@ -94,5 +115,5 @@ def test_explain_returns_a_reason():
 def test_masked_text_is_preferred():
     """PII-masked text is what the UI shows; classifying the raw text could route
     on a phone number the operator never sees."""
-    r = row(text="call me on 9999999999", text_masked="branch manager was rude")
-    assert derive(r) == "employee"
+    r = row(text="call me on 9999999999", text_masked="the ATM at the branch ate my card")
+    assert derive(r) == "branch"

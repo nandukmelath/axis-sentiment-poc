@@ -61,8 +61,40 @@ SCAM_RX = _rx("scam", "scamm?er", "impersonat\\w*", "phish\\w*", "fake (call|sms
               "fraud ?call", "lottery", "kyc (update|expir\\w+) (link|sms)", "otp share")
 FRAUD_RX = _rx("fraud", "unauthoris?zed", "unauthorised", "debited without", "money (stolen|deducted)",
                "cyber ?crime", "chargeback", "siphon\\w*", "hacked")
-EMPLOYEE_RX = _rx("employee", "staff", "manager", "colleague", "hr", "appraisal", "salary hike",
-                  "work ?life", "toxic", "resign\\w*", "onboarding", "team lead", "boss")
+# Employment talk, first-person only. Two rounds of false positives shaped this:
+#   1. bare "employee"/"staff"/"manager" swept up every customer describing branch
+#      staff — "the employee was rude" is a service complaint. 27 of 50 tweets wrong.
+#   2. first-person alone still caught Reddit users naming their OWN employer for
+#      loan eligibility ("I work at Infosys, am I eligible?").
+# So a match must ALSO sit near the brand — see _employee_at_brand.
+# "I work/worked at <brand>" — the employer must be Axis itself, immediately after
+# the preposition. Proximity alone was not enough: "I work at Infosys, am I eligible
+# for an Axis card?" put the brand well inside any sane window.
+EMPLOYED_AT_BRAND_RX = re.compile(
+    r"\bi (?:work|worked|am working|was working|used to work)\s+"
+    r"(?:at|for|in|with)\s+(?:the\s+|@)?axis", re.I)
+# Workplace vocabulary that only an insider uses. Still requires the brand nearby,
+# since "my appraisal" alone says nothing about which employer.
+WORKPLACE_RX = re.compile(
+    r"(\bmy (?:appraisal|team ?lead|employer|workplace)\b"
+    r"|\bwork[ -]?life balance\b|\btoxic (?:culture|workplace|management)\b"
+    r"|\b(?:ex[- ]?)?employee of\b|\bworked (?:here|there)\b"
+    r"|\bsalary (?:hike|revision)\b|\bappraisal cycle\b"
+    r"|\bresigned from\b|\bnotice period\b|\bonboarding process\b"
+    r"|\bhr (?:policy|team|department)\b)", re.I)
+BRAND_NEAR_RX = re.compile(r"axis", re.I)
+BRAND_WINDOW = 60
+
+
+def _employee_at_brand(text):
+    """True only when the author is describing their OWN employment at Axis."""
+    if EMPLOYED_AT_BRAND_RX.search(text):
+        return True
+    for m in WORKPLACE_RX.finditer(text):
+        lo = max(0, m.start() - BRAND_WINDOW)
+        if BRAND_NEAR_RX.search(text[lo:m.end() + BRAND_WINDOW]):
+            return True
+    return False
 BRANCH_RX = _rx("branch", "atm", "cash ?deposit machine", "cdm", "passbook", "teller", "queue",
                 "counter", "locker")
 RESPONSE_RX = _rx("no (response|reply|revert|update|resolution)", "still waiting", "no one (called|responded)",
@@ -163,8 +195,8 @@ def explain(row):
                                                  "churn_threat", "legal_threat"):
         return "market_news", "text matches market/investor coverage"
 
-    if EMPLOYEE_RX.search(text):
-        return "employee", "text matches employee/workplace"
+    if _employee_at_brand(text):
+        return "employee", "first-person employment at the brand"
     if BRANCH_RX.search(text) or "branch_atm" in aspects:
         return "branch", "text or aspect matches branch/ATM"
 
