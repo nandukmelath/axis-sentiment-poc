@@ -60,7 +60,12 @@ services:
       # from the Render shell and update this value.
       - key: TWITTER_NITTER_INSTANCES
         value: nitter.privacyredirect.com,nitter.perennialte.ch
-      # Chromium needs ~1GB; leave off unless the plan has room for it.
+      # Off deliberately: the `starter` worker plan this file uses is 512MB/0.5CPU
+      # (Render's pricing page, checked 2026-08-10), and a Chromium launch alongside
+      # the Python/pandas process is not reliable in that headroom. Bumping the
+      # scheduler to `standard` (2GB, +$18/mo) would fix it, but the free Actions
+      # path (DEPLOY.md Path A) already runs these three sources for free on a
+      # 7GB runner — there is no reason to pay Render for what Actions gets free.
       - key: STEALTH_SOURCES
         value: "0"
       # Secrets — set in the Render UI, never committed.

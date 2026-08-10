@@ -137,9 +137,16 @@ def test_parse_rss_items_extracts_and_dedupes():
     xml = _ITEM.format(title="first post", author="acct1", sid="111") + \
           _ITEM.format(title="duplicate id", author="acct1", sid="111") + \
           _ITEM.format(title="second post", author="acct2", sid="222")
-    tl._parse_rss_items(xml, found, verbose=False, label="test")
+    added = tl._parse_rss_items(xml, found, verbose=False, label="test")
     assert set(found) == {"111", "222"}
     assert found["111"]["text"] == "first post"       # first write wins, not overwritten
+    assert added == 2, "return value is what discover() uses to decide whether to retry"
+
+
+def test_parse_rss_items_returns_zero_for_an_empty_feed():
+    """This return value is the whole fix for the whitelist-gated-instance bug —
+    discover() reads it to tell an empty-but-200 response apart from a real one."""
+    assert tl._parse_rss_items("<rss></rss>", {}, verbose=False, label="test") == 0
 
 
 def test_parse_rss_items_strips_reply_prefix():
@@ -157,24 +164,69 @@ def test_parse_rss_items_skips_items_without_status_link():
 
 
 # ---------------------------------------------------------------- query rotation
+_NONEMPTY_ITEM = _ITEM.format(title="a real tweet", author="acct1", sid="999")
+
+
 def test_discover_rotates_starting_instance_per_query(monkeypatch):
     """Piling every query onto whichever instance answers first is what cascades
     one Nitter box into a 503 after two or three hits. Rotation is the fix, so it
-    has to actually rotate, not just iterate the pool in the same order every time."""
+    has to actually rotate, not just iterate the pool in the same order every time.
+    Each query's fake response carries a DIFFERENT id — reusing one id across
+    queries would make every query after the first see it as already-seen (added
+    == 0) and correctly keep retrying, which is real behaviour but would conflate
+    this test with the separate retry-on-empty one below."""
     pool = ["host-a", "host-b", "host-c"]
     monkeypatch.setattr(tl, "discover_instances", lambda verbose=True: pool)
     hit_order = []
 
+    ids = iter(["101", "102", "103"])       # _STATUS_RX requires digits — the query
+                                             # string itself ("q1") does not match it
+
     def _fake_rss_get(host, path, params, dead, verbose):
         if path == "/search/rss":
             hit_order.append((params["q"], host))
-        return "<rss></rss>"
+            return _ITEM.format(title="a real tweet", author="acct1", sid=next(ids))
+        return None
     monkeypatch.setattr(tl, "_rss_get", _fake_rss_get)
 
     tl.discover(queries=["q1", "q2", "q3"], accounts=[], verbose=False)
     hosts_used = [h for _, h in hit_order]
     assert hosts_used == ["host-a", "host-b", "host-c"], (
         "each query should start on a different host, not always host-a")
+
+
+def test_discover_retries_when_an_instance_answers_but_finds_nothing(monkeypatch):
+    """The actual bug this fixed: nitter.net answers HTTP 200 with a syntactically
+    valid, EMPTY feed for a whitelist-gated query, and the old `break`-on-first-200
+    logic silently burned the query's only attempt on a host that was never going
+    to serve it. A host in the rotation must be tried before the query gives up."""
+    monkeypatch.setattr(tl, "discover_instances", lambda verbose=True: ["empty-host", "real-host"])
+    attempted = []
+
+    def _fake_rss_get(host, path, params, dead, verbose):
+        attempted.append(host)
+        return "<rss></rss>" if host == "empty-host" else _NONEMPTY_ITEM
+    monkeypatch.setattr(tl, "_rss_get", _fake_rss_get)
+
+    found = tl.discover(queries=["q1"], accounts=[], verbose=False)
+    assert "999" in found, "the query must fall through to the host that actually answers"
+    assert attempted == ["empty-host", "real-host"]
+
+
+def test_discover_gives_up_after_max_tries_per_query(monkeypatch):
+    """A query that is genuinely empty everywhere must not hammer the whole pool —
+    only up to the per-query try cap."""
+    pool = [f"host-{i}" for i in range(10)]
+    monkeypatch.setattr(tl, "discover_instances", lambda verbose=True: pool)
+    attempted = []
+
+    def _fake_rss_get(host, path, params, dead, verbose):
+        attempted.append(host)
+        return "<rss></rss>"
+    monkeypatch.setattr(tl, "_rss_get", _fake_rss_get)
+
+    tl.discover(queries=["q1"], accounts=[], verbose=False)
+    assert len(attempted) == 3, "must stop at MAX_TRIES_PER_QUERY, not exhaust the pool"
 
 
 def test_discover_marks_failing_instance_dead_for_the_rest_of_the_run(monkeypatch):

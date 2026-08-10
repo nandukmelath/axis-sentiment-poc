@@ -205,7 +205,9 @@ def _clean(s):
 
 
 def _parse_rss_items(xml_text, found, verbose, label):
-    """Shared item-parsing for both search and timeline RSS — same <item> shape."""
+    """Shared item-parsing for both search and timeline RSS — same <item> shape.
+    Returns the count of genuinely new items, so callers can tell a real (if
+    small) result apart from a syntactically valid but empty feed."""
     n_before = len(found)
     for block in _ITEM_RX.findall(xml_text):
         link = _tag(block, "link")
@@ -223,8 +225,10 @@ def _parse_rss_items(xml_text, found, verbose, label):
             "created_at": _tag(block, "pubDate"),
             "url": f"https://x.com/{author or 'i'}/status/{tid}",
         }
+    added = len(found) - n_before
     if verbose:
-        print(f"  [x] {label}: +{len(found) - n_before} new ({len(found)} total)")
+        print(f"  [x] {label}: +{added} new ({len(found)} total)")
+    return added
 
 
 def _rss_get(host, path, params, dead, verbose):
@@ -266,31 +270,48 @@ def discover(queries=None, instances=None, accounts=None, verbose=True):
         pool = list(FALLBACK_INSTANCES)
     found, dead = {}, set()
 
+    # A host that requires Nitter's RSS-reader whitelist (nitter.net is a confirmed
+    # example) answers HTTP 200 with a syntactically valid, EMPTY feed rather than an
+    # error — so a `break` on the first 200 silently burns a query's only attempt on
+    # a host that was never going to serve it. Try up to MAX_TRIES_PER_QUERY instances
+    # and only stop once one of them actually returns something, or the budget is
+    # spent; a query that is genuinely empty everywhere still costs at most that many
+    # requests, not the whole pool.
+    MAX_TRIES_PER_QUERY = 3
+
     for i, q in enumerate(queries):
         order = pool[i % len(pool):] + pool[:i % len(pool)]      # rotate start point
+        tries = 0
         for host in order:
             if host in dead:
                 continue
             text = _rss_get(host, "/search/rss", {"f": "tweets", "q": q}, dead, verbose)
-            if text is None:
-                continue
-            _parse_rss_items(text, found, verbose, f"{host} search {q!r}")
-            time.sleep(PER_QUERY_PAUSE)
-            break                       # one working instance per query is enough
+            tries += 1
+            if text is not None:
+                added = _parse_rss_items(text, found, verbose, f"{host} search {q!r}")
+                time.sleep(PER_QUERY_PAUSE)
+                if added > 0:
+                    break
+            if tries >= MAX_TRIES_PER_QUERY:
+                break
 
     for i, acct in enumerate(accounts):
         order = pool[(i + 1) % len(pool):] + pool[:(i + 1) % len(pool)]
+        tries = 0
         for host in order:
             if host in dead:
                 continue
             # with_replies also surfaces every reply the support handle sends —
             # the authoritative record of the bank's own side of a conversation.
             text = _rss_get(host, f"/{acct}/with_replies/rss", {}, dead, verbose)
-            if text is None:
-                continue
-            _parse_rss_items(text, found, verbose, f"{host} timeline @{acct}")
-            time.sleep(PER_QUERY_PAUSE)
-            break
+            tries += 1
+            if text is not None:
+                added = _parse_rss_items(text, found, verbose, f"{host} timeline @{acct}")
+                time.sleep(PER_QUERY_PAUSE)
+                if added > 0:
+                    break
+            if tries >= MAX_TRIES_PER_QUERY:
+                break
     return found
 
 

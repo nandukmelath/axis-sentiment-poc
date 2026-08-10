@@ -70,7 +70,11 @@ from config import (  # noqa: E402
 STEALTH_RETRIES = int(os.getenv("STEALTH_RETRIES", "3"))      # browser relaunches per URL
 STEALTH_READY_SECS = int(os.getenv("STEALTH_READY_SECS", "45"))  # DOM-readiness poll budget
 # How many Maps branches to open for their actual reviews (~9s each). 0 = branch stars only.
-STEALTH_GMAPS_PLACES = int(os.getenv("STEALTH_GMAPS_PLACES", "4"))
+# 4 -> 6: this is the only branch-level customer voice in the whole pipeline (see
+# module docstring), and a 2h-cycle run has the time budget to visit two more
+# branches per pass. Each visit is real browser-navigation time, so this stays a
+# modest bump, not a large one.
+STEALTH_GMAPS_PLACES = int(os.getenv("STEALTH_GMAPS_PLACES", "6"))
 
 BRAND_RE = re.compile(r"\baxis\b", re.IGNORECASE)
 _NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)

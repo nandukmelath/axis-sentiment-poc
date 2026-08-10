@@ -6,6 +6,15 @@ ENV PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# requirements.txt installs the playwright PYTHON PACKAGE; the browser binary is a
+# separate download this step was missing. Without it, every STEALTH_SOURCES=1
+# fetcher (trustpilot_web, gmaps_web, mouthshut_web — fetch/scrapling_stealth.py,
+# the Cloudflare-solving path for real customer reviews) would crash on first use
+# in the container with "Executable doesn't exist", even though `import playwright`
+# succeeds and every local test looks fine. --with-deps pulls the OS libraries
+# Chromium needs that python:3.12-slim does not ship (libnss3, libatk, etc).
+RUN python -m playwright install --with-deps chromium
+
 COPY . .
 
 EXPOSE 8501
