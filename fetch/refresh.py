@@ -19,18 +19,25 @@ Only sources that expose a keyless per-post metrics lookup can do this honestly:
     reddit       Arctic Shift returns score/num_comments by id
     hackernews   Firebase item API, no key
     mastodon     public status endpoint on the origin instance
+    twitter      X's own syndication endpoint (the embedded-widget one)
+
+Twitter was initially written off here as impossible, on the grounds that live X
+scraping is dead. That conflated two different problems: SEARCH needs a logged-in
+session, per-tweet LOOKUP does not. cdn.syndication.twimg.com serves any tweet by
+id, keyless — which covers the 884 engagement-bearing posts that would otherwise
+have retired unrefreshed. It exposes likes and replies only; retweets, quotes and
+views stay null rather than being guessed.
 
 Everything else is registered as unsupported and skipped rather than faked.
-Twitter is the painful one: it holds 884 of our engagement-bearing posts, but
-live X scraping is dead and the API tier that would serve this costs real money,
-so its rows retire immediately instead of pretending to refresh. `python -m
-fetch.refresh --status` prints exactly which sources are live and which are not,
-because a refresh system that silently no-ops looks identical to one that works.
+`python -m fetch.refresh --status` prints exactly which sources are live and
+which are not, because a refresh system that silently no-ops looks identical to
+one that works.
 """
 import argparse
 import datetime as dt
 import os
 import sys
+import time
 
 import requests
 
@@ -146,9 +153,32 @@ def _mastodon(ids):
 
 # Sources with a keyless per-post metrics lookup. Absence here is deliberate and
 # visible via --status, not an oversight.
-REFRESHERS = {"reddit": _reddit, "hackernews": _hackernews, "mastodon": _mastodon}
+def _twitter(ids):
+    """X's syndication endpoint — the one the embedded-tweet widget calls. Public,
+    keyless, and it serves any tweet by id.
+
+    This was previously written off as impossible because live X *search* is dead.
+    Search and per-tweet lookup turn out to be different problems: search needs a
+    session, lookup does not. Likes and replies refresh; retweets, quotes and
+    views are not exposed and stay null rather than being guessed.
+    """
+    from fetch.twitter_live import hydrate
+
+    out = {}
+    with requests.Session() as sess:
+        for sid in ids:
+            tid = sid.split(":", 1)[-1]
+            h = hydrate(tid, sess)
+            if h:
+                out[tid] = {"likes": h.get("engagement"), "comments": h.get("reply_count"),
+                            "reshares": None, "views": None}
+            time.sleep(0.25)
+    return out
+
+
+REFRESHERS = {"reddit": _reddit, "hackernews": _hackernews, "mastodon": _mastodon,
+              "twitter": _twitter}
 UNSUPPORTED_REASON = {
-    "twitter": "live X scraping dead; API tier is paid",
     "play": "Play Store exposes no stable per-review metric endpoint",
     "appstore": "App Store reviews carry no engagement counts",
     "youtube": "per-video stats need a second HTML fetch per post; not wired yet",

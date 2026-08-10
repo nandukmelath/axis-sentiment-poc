@@ -46,9 +46,17 @@ def test_missing_first_seen_does_not_crash():
 def test_unsupported_sources_are_declared_not_silently_dropped():
     """A refresh system that silently no-ops looks identical to one that works,
     so every skipped source must carry a stated reason."""
-    for src in ("twitter", "play", "appstore"):
+    for src in ("play", "appstore"):
         assert src not in refresh.REFRESHERS
         assert refresh.UNSUPPORTED_REASON.get(src)
+
+
+def test_twitter_refreshes_via_syndication():
+    """Twitter was first written off as unrefreshable because live X search is
+    dead. Search and per-tweet lookup are different problems — the syndication
+    endpoint serves any tweet by id, keyless."""
+    assert "twitter" in refresh.REFRESHERS
+    assert "twitter" not in refresh.UNSUPPORTED_REASON
 
 
 def test_registered_refreshers_are_callable():
