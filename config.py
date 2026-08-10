@@ -44,7 +44,13 @@ NEWS_RSS = "https://news.google.com/rss/search?q=%22Axis+Bank%22&hl=en-IN&gl=IN&
 # Google News: multiple queries for wider coverage (all keyless).
 NEWS_QUERIES = ["Axis Bank", "Axis Bank UPI", "Axis Bank fraud", "Axis Bank credit card",
                 "Axis Magnus", "Axis Bank RBI"]
-TWITTER_QUERIES = ["Axis Bank", "@AxisBank"]
+# Broadened from ["Axis Bank", "@AxisBank"] — those two alone under-covered issue-specific
+# threads that rank low in a bare-brand search. Each query is a separate Nitter RSS call
+# (round-robined across the instance pool in fetch/twitter_live.py), so this is a genuine
+# volume increase, not a rename. Direct account timelines (@AxisBank, @AxisBankSupport) are
+# a wholly separate discovery path — see TWITTER_ACCOUNT_TIMELINES in twitter_live.py.
+TWITTER_QUERIES = ["Axis Bank", "@AxisBank", "AxisBankSupport", "#AxisBank",
+                   "Axis Bank fraud", "Axis Bank complaint"]
 
 # ---- extra FREE / keyless sources ----
 BLUESKY_QUERIES = ["Axis Bank", "AxisBank", "Axis Magnus"]      # public.api.bsky.app searchPosts (no auth)
@@ -135,7 +141,12 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 # FETCH_MULT scales every source's cap (env, default 1) — set high for a max harvest run.
 _FETCH_MULT = float(os.getenv("FETCH_MULT", "1"))
 FETCH_LIMITS = {k: max(v, int(v * _FETCH_MULT)) for k, v in
-                {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 30,
+                # twitter raised 30->150: discovery now covers 6 search queries plus 2 account
+                # timelines (fetch/twitter_live.py) and finds ~130 unique tweets/run — a 30 cap
+                # was silently discarding roughly three quarters of what discovery already found.
+                # Hydration is cheap (~0.3s/tweet via the GraphQL guest token) so raising this
+                # costs runtime, not reliability.
+                {"news": 30, "play": 40, "appstore": 40, "reddit": 40, "youtube": 60, "twitter": 150,
                  "bluesky": 25, "hackernews": 30, "mastodon": 20,
                  "technofino": 60, "rssnews": 40, "gdelt": 30}.items()}
 

@@ -4,15 +4,40 @@ X killed the free API and the public search page needs a logged-in session, so
 there is no single endpoint that both FINDS tweets and returns full data. This
 module uses two, each doing the half it is good at:
 
-  DISCOVERY   Nitter RSS search                    ->  tweet ids + rough text
-  HYDRATION   api.twitter.com GraphQL + guest token ->  every field, incl. reach
-              cdn.syndication.twimg.com             ->  fallback, no reach
+  DISCOVERY   Nitter RSS: search + direct account timelines -> tweet ids + rough text
+  HYDRATION   api.twitter.com GraphQL + guest token -> every field, incl. reach
+              cdn.syndication.twimg.com             -> fallback, no reach
 
-Discovery is the fragile half. Nitter instances die constantly — of 23 probed on
-2026-08-10 only two served results, the rest returned 403 (Anubis JS challenge),
-502, or an empty feed. So instances are a rotating pool, tried in order, with a
-failing instance dropped for the rest of the run. Expect to update INSTANCES; the
-`--probe` flag re-tests the pool and prints what is alive.
+Discovery is the fragile half, and it stays that way on principle, not oversight.
+X's own GraphQL SearchTimeline was tested directly against the query id pulled
+live from X's served JS bundle (not guessed) — it 404s for a guest token while
+the sibling TweetResultByRestId call succeeds on the identical session. That is
+X deliberately gating full-text SEARCH behind login while leaving single-tweet
+LOOKUP open for the embed-widget use case. It is an intentional access boundary,
+not a bug to route around with a scraped login session — so Nitter remains the
+only keyless discovery path, and the design leans into making THAT resilient
+rather than pretending it is not the weak link.
+
+Two things make it resilient instead of brittle:
+
+  1. INSTANCE DISCOVERY IS DYNAMIC. Of 23 Nitter instances probed by hand on
+     2026-08-10, only two served results — hardcoding those two just moves the
+     single point of failure from "Nitter is dead" to "those two boxes are dead".
+     `discover_instances()` pulls the current healthy set from
+     status.d420.de/api/v1/instances (a community-run uptime tracker for exactly
+     this churn), falls back to the static FALLBACK_INSTANCES on any failure, and
+     the runtime probe in discover() is still the real arbiter — the tracker's
+     "healthy" only means the instance answers pings, not that it serves RSS
+     search without a whitelist (nitter.net is a confirmed example of both).
+  2. DISCOVERY IS NOT JUST SEARCH. ACCOUNTS carries direct Nitter timeline RSS
+     for @AxisBank and @AxisBankSupport (with replies), which is authoritative
+     and complete for those two accounts rather than however the search index
+     happens to rank them. This is the bank's own side of the conversation —
+     announcements and every support reply — not currently reachable any other
+     way in this pipeline.
+
+`--probe` re-tests the full candidate pool (dynamic + static) and prints what is
+alive, for when both halves need a manual sanity check.
 
 HYDRATION — GraphQL first
 X's web client authenticates logged-out users with a GUEST token: POST to
@@ -55,11 +80,57 @@ import requests
 from config import TWITTER_QUERIES
 from fetch.webutil import brand_match
 
-# Probed 2026-08-10: only these two of 23 candidates returned search results.
-# Override with TWITTER_NITTER_INSTANCES="host1,host2".
-INSTANCES = [h.strip() for h in os.getenv(
+# Confirmed by hand on 2026-08-10 — kept as the floor under the dynamic list, since
+# discover_instances() itself depends on a third party that can go down.
+FALLBACK_INSTANCES = [h.strip() for h in os.getenv(
     "TWITTER_NITTER_INSTANCES",
     "nitter.privacyredirect.com,nitter.perennialte.ch").split(",") if h.strip()]
+
+# A community-run health tracker for exactly the churn Nitter instances go through.
+# "healthy" here means the instance answers a basic ping, not that our specific
+# whitelist-free RSS-search use case works on it — the runtime probe in discover()
+# is still what actually proves a host usable, this just widens the candidate set
+# it gets to try instead of only ever trying the same two.
+INSTANCE_STATUS_URL = "https://status.d420.de/api/v1/instances"
+
+# Nitter timeline RSS for the bank's own accounts — direct and complete for these
+# two, rather than at the mercy of whatever the search index surfaces.
+ACCOUNT_TIMELINES = [h.strip().lstrip("@") for h in os.getenv(
+    "TWITTER_ACCOUNT_TIMELINES", "AxisBank,AxisBankSupport").split(",") if h.strip()]
+
+_instance_cache = None
+
+
+def discover_instances(verbose=True):
+    """Live healthy-instance list from status.d420.de, deduped against and
+    prepended to FALLBACK_INSTANCES. Cached per process — a pipeline run is one
+    invocation lasting minutes, not a long-lived server, so there is no benefit
+    to a time-based cache and every call would just be another chance to trip
+    the tracker's own rate limit.
+    """
+    global _instance_cache
+    if _instance_cache is not None:
+        return _instance_cache
+    try:
+        r = requests.get(INSTANCE_STATUS_URL, headers=WEB_HEADERS, timeout=15)
+        if r.status_code != 200:
+            raise ValueError(f"HTTP {r.status_code}")
+        hosts = r.json().get("hosts", [])
+        healthy = [h["domain"] for h in hosts
+                  if h.get("healthy") and not h.get("is_bad_host") and h.get("domain")]
+        healthy.sort(key=lambda d: -next(
+            (h.get("points", 0) for h in hosts if h["domain"] == d), 0))
+        if verbose:
+            print(f"  [x] instance tracker: {len(healthy)} healthy of {len(hosts)} listed")
+    except (requests.RequestException, ValueError, KeyError) as e:
+        if verbose:
+            print(f"  [x] instance tracker unavailable ({type(e).__name__}); "
+                  f"using the fixed fallback list only")
+        healthy = []
+
+    merged = list(dict.fromkeys(healthy + FALLBACK_INSTANCES))       # dedup, order kept
+    _instance_cache = merged
+    return merged
 
 SYNDICATION = "https://cdn.syndication.twimg.com/tweet-result"
 
@@ -133,61 +204,93 @@ def _clean(s):
     return re.sub(r"\s+", " ", _html.unescape(s)).strip()
 
 
-# ------------------------------------------------------------------ discovery
-def discover(queries=None, instances=None, verbose=True):
-    """Nitter RSS search across the instance pool. Returns {id: {...}}.
+def _parse_rss_items(xml_text, found, verbose, label):
+    """Shared item-parsing for both search and timeline RSS — same <item> shape."""
+    n_before = len(found)
+    for block in _ITEM_RX.findall(xml_text):
+        link = _tag(block, "link")
+        m = _STATUS_RX.search(link)
+        if not m:
+            continue
+        tid = m.group(1)
+        if tid in found:
+            continue
+        author = _tag(block, "dc:creator").lstrip("@")
+        found[tid] = {
+            "id": tid,
+            "author": author,
+            "text": _REPLY_PREFIX_RX.sub("", _clean(_tag(block, "title"))),
+            "created_at": _tag(block, "pubDate"),
+            "url": f"https://x.com/{author or 'i'}/status/{tid}",
+        }
+    if verbose:
+        print(f"  [x] {label}: +{len(found) - n_before} new ({len(found)} total)")
 
-    An instance that errors or rate-limits is dropped for the remainder of the
-    run rather than retried per query — once a Nitter box starts 503ing it stays
-    that way for minutes, and hammering it just slows the fetch down.
+
+def _rss_get(host, path, params, dead, verbose):
+    """One RSS request against one instance. Returns text or None; marks the host
+    dead on a status that means "stop trying this instance for the rest of the run"
+    rather than "this one request happened to fail"."""
+    try:
+        r = requests.get(f"https://{host}{path}", params=params,
+                         headers=RSS_HEADERS, timeout=TIMEOUT)
+    except requests.RequestException as e:
+        if verbose:
+            print(f"  [x] {host} net error: {type(e).__name__}")
+        dead.add(host)
+        return None
+    if r.status_code != 200:
+        if verbose:
+            print(f"  [x] {host} HTTP {r.status_code} for {path}")
+        if r.status_code in (403, 429, 502, 503):
+            dead.add(host)
+        return None
+    return r.text
+
+
+# ------------------------------------------------------------------ discovery
+def discover(queries=None, instances=None, accounts=None, verbose=True):
+    """Nitter RSS across the instance pool: keyword search plus direct account
+    timelines. Returns {id: {...}}.
+
+    Queries are round-robined across the pool starting instance rather than all
+    piling onto whichever host answers first — a Nitter box that has just served
+    two queries is the one most likely to 503 a third, and spreading load is what
+    lets six queries run without cascading a single instance into rate-limit.
+    An instance that errors or rate-limits is dropped for the rest of the run.
     """
     queries = queries or TWITTER_QUERIES
-    pool = list(instances or INSTANCES)
+    accounts = ACCOUNT_TIMELINES if accounts is None else accounts
+    pool = list(instances or discover_instances(verbose=verbose))
+    if not pool:
+        pool = list(FALLBACK_INSTANCES)
     found, dead = {}, set()
 
-    for q in queries:
-        for host in pool:
+    for i, q in enumerate(queries):
+        order = pool[i % len(pool):] + pool[:i % len(pool)]      # rotate start point
+        for host in order:
             if host in dead:
                 continue
-            url = f"https://{host}/search/rss"
-            try:
-                r = requests.get(url, params={"f": "tweets", "q": q},
-                                 headers=RSS_HEADERS, timeout=TIMEOUT)
-            except requests.RequestException as e:
-                if verbose:
-                    print(f"  [x] {host} net error: {type(e).__name__}")
-                dead.add(host)
+            text = _rss_get(host, "/search/rss", {"f": "tweets", "q": q}, dead, verbose)
+            if text is None:
                 continue
-
-            if r.status_code != 200:
-                if verbose:
-                    print(f"  [x] {host} HTTP {r.status_code} for {q!r}")
-                if r.status_code in (403, 429, 502, 503):
-                    dead.add(host)
-                continue
-
-            n_before = len(found)
-            for block in _ITEM_RX.findall(r.text):
-                link = _tag(block, "link")
-                m = _STATUS_RX.search(link)
-                if not m:
-                    continue
-                tid = m.group(1)
-                if tid in found:
-                    continue
-                author = _tag(block, "dc:creator").lstrip("@")
-                found[tid] = {
-                    "id": tid,
-                    "author": author,
-                    "text": _REPLY_PREFIX_RX.sub("", _clean(_tag(block, "title"))),
-                    "created_at": _tag(block, "pubDate"),
-                    "url": f"https://x.com/{author or 'i'}/status/{tid}",
-                }
-            if verbose:
-                print(f"  [x] {host} {q!r}: +{len(found) - n_before} new "
-                      f"({len(found)} total)")
+            _parse_rss_items(text, found, verbose, f"{host} search {q!r}")
             time.sleep(PER_QUERY_PAUSE)
             break                       # one working instance per query is enough
+
+    for i, acct in enumerate(accounts):
+        order = pool[(i + 1) % len(pool):] + pool[:(i + 1) % len(pool)]
+        for host in order:
+            if host in dead:
+                continue
+            # with_replies also surfaces every reply the support handle sends —
+            # the authoritative record of the bank's own side of a conversation.
+            text = _rss_get(host, f"/{acct}/with_replies/rss", {}, dead, verbose)
+            if text is None:
+                continue
+            _parse_rss_items(text, found, verbose, f"{host} timeline @{acct}")
+            time.sleep(PER_QUERY_PAUSE)
+            break
     return found
 
 
@@ -392,9 +495,12 @@ def fetch(queries=None, limit=None, verbose=True):
 
 
 def probe(candidates=None):
-    """Re-test the instance pool. Nitter churn is constant; this is how you find
-    the replacements when the fetch starts returning zero."""
-    cands = candidates or (INSTANCES + [
+    """Re-test the candidate pool: the live tracker's healthy set, the fixed
+    fallback, and a broader manual list, all in one report. Nitter churn is
+    constant; this is how you find replacements when the fetch starts returning
+    zero, and how you sanity-check the tracker integration itself."""
+    dynamic = discover_instances(verbose=False)
+    cands = candidates or (dynamic + FALLBACK_INSTANCES + [
         "nitter.net", "nitter.poast.org", "nitter.tiekoetter.com", "nitter.space",
         "lightbrd.com", "nitter.cz", "n.opnxng.com", "nitter.catsarch.com",
         "nitter.qwik.space", "xcancel.com", "nitter.kavin.rocks"])
@@ -411,6 +517,9 @@ def probe(candidates=None):
         except requests.RequestException as e:
             print(f"{h:34} {type(e).__name__:<10} 0")
     print(f"\nworking: {','.join(alive) if alive else 'NONE'}")
+    if not dynamic:
+        print("note: instance tracker returned nothing usable this run — "
+              "FALLBACK_INSTANCES carried the whole probe")
     return alive
 
 
