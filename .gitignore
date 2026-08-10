@@ -25,8 +25,7 @@ full_db.ipynb
 AXIS_FULL_DB.html
 AXIS_DATA_REPORT.html
 .ipynb_checkpoints/
-# Workflows held back from push: the gh OAuth token lacks the `workflow` scope.
-# To enable the cron: `gh auth refresh -h github.com -s workflow` then
-# `git add -f .github/workflows && git commit -m "add workflows" && git push`.
-# (Or add pipeline.yml via GitHub -> Actions -> New workflow, which isn't scope-gated.)
-.github/workflows/
+# NOTE: .github/workflows/ used to be ignored here because the gh OAuth token
+# lacked the `workflow` scope. The workflows are tracked now and Path A of
+# DEPLOY.md depends on them. To push workflow changes:
+#   gh auth refresh -h github.com -s workflow

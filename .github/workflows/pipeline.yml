@@ -14,7 +14,15 @@ name: axis-pipeline
 
 on:
   schedule:
-    - cron: '0 */12 * * *'      # every 12h (private-repo Actions minutes stay under 2000/mo)
+    # Every 2h. This repo is PUBLIC, and GitHub-hosted standard runners are free and
+    # unmetered on public repos — the old 12h cadence was rationing a 2,000 min/month
+    # private-repo budget that does not apply. 2h is also the cadence the engagement
+    # refresh is designed around: 12 passes x 2h = 24h of coverage per post.
+    #
+    # Actions cron is best-effort and can fire 10-30 min late under load. That is fine
+    # here: fetch/refresh.py schedules on ELAPSED time, not on the run being punctual,
+    # so a late run self-corrects instead of skipping a post's slot.
+    - cron: '0 */2 * * *'
   workflow_dispatch: {}          # manual "Run workflow" button
 
 concurrency:
@@ -53,8 +61,15 @@ jobs:
       - name: Ensure warehouse schema on Neon
         run: python db.py
 
-      - name: Run full harvest (fetch -> classify -> warehouse -> marts)
-        run: python -m run_harvest
+      # One pass, not --loop: the cron IS the loop here. run_cycle does
+      # fetch -> engagement refresh -> analyse -> categorise.
+      - name: Cycle (fetch -> refresh -> analyse -> categorise)
+        run: python run_cycle.py
 
+      - name: Build warehouse (star + marts)
+        run: python -m warehouse.build
+
+      # Non-blocking: a DQ failure should surface without discarding a good harvest,
+      # since the build has already written to the live DB by this point.
       - name: Data-quality gate
         run: python -m warehouse.dq_checks

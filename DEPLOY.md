@@ -1,26 +1,83 @@
 # Deploy
 
-Two supported paths. Both are ONE provider, one bill, one place to look when
-something breaks — the thing to avoid is stitching GitHub Actions + Neon +
-Streamlit Cloud together, which is free but gives you three services that fail
-independently and three consoles to check.
+Three supported paths.
 
-| | **A — Render (managed)** | **B — one VM (Docker)** |
-|---|---|---|
-| You administer | nothing | OS, patches, backups |
-| Postgres | managed, backed up | a container you own |
-| Restart on crash | platform | `restart: unless-stopped` |
-| Cost | ~$21/mo | €3.79–$12/mo |
-| Config | `render.yaml` in repo | `docker-compose.yml` |
-| Escape hatch if IPs get blocked | limited | any proxy, any region |
+| | **A — Free stack** | **B — Render (managed)** | **C — one VM** |
+|---|---|---|---|
+| Cost | **$0** | ~$21/mo | €3.79–$12/mo |
+| Pipeline compute | GitHub Actions, **unmetered** | worker | container |
+| Database | Neon free, 0.5 GB | managed PG | container |
+| Dashboard | Streamlit Cloud | web service | container |
+| You administer | nothing | nothing | OS, patches, backups |
+| Consoles to check | 3 | 1 | 1 |
+| Real ceiling | Neon 100 CU-hours/mo | none | RAM/disk |
 
-**Take A unless cost dominates.** It is the same three components, but patching,
-backups and restarts stop being your problem — which matters for something whose
-whole purpose is running unattended.
+**Take A.** GitHub-hosted standard runners are free and *unmetered on public
+repositories* — and this repo is public, so the pipeline has no practical limit:
+12 runs a day, 50-minute budget each, no minute cap and no bill. That is the
+closest thing to "unlimited 24/7" that exists for free.
+
+The honest cost of A is three consoles instead of one. Everything in it is
+already written — `.github/workflows/pipeline.yml` runs the cycle, `db.py` speaks
+Postgres, and `requirements.txt` is already tuned for Streamlit Cloud.
 
 ---
 
-# Path A — Render Blueprint
+# Path A — free, unmetered
+
+## 1. Pipeline (GitHub Actions)
+
+`.github/workflows/pipeline.yml` already runs the 2-hourly cycle. It needs repo
+secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Why |
+|---|---|
+| `DATABASE_URL` | the Neon connection string from step 2 |
+| `GROQ_API_KEY` | else everything falls back to lexicon-only scoring |
+| `CEREBRAS_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | optional failover |
+
+Pushing the workflow needs the `workflow` OAuth scope:
+
+```bash
+gh auth refresh -h github.com -s workflow
+```
+
+Actions cron is best-effort and can fire 10–30 minutes late. That is fine here:
+the engagement refresh schedules on **elapsed time**, not on the run being
+punctual, so a late run self-corrects rather than skipping a post's slot.
+
+## 2. Database (Neon)
+
+Create a free project, copy the pooled connection string into `DATABASE_URL` (as
+an Actions secret and a Streamlit secret), then move the corpus:
+
+```bash
+DATABASE_URL='postgresql+psycopg2://...neon.tech/...?sslmode=require' python migrate_to_pg.py
+```
+
+Run `python -m tools.fix_dates` **first** or the RFC-822 date corruption migrates
+with the data.
+
+**The one real ceiling in this stack:** Neon free gives 0.5 GB storage and
+**100 compute-hours/month**. Storage is a non-issue — the corpus is 16 MB, 3% of
+the allowance. Compute is the thing to watch: Neon autosuspends after 5 minutes
+idle, and the dashboard's live fragments are cached at 30-minute TTL so they do
+not hold it awake. Normal demo use lands comfortably inside 100 CU-hours; leaving
+the dashboard open all day for weeks would not. If you exceed it, that is the
+signal to move to Path B or C.
+
+## 3. Dashboard (Streamlit Community Cloud)
+
+Point it at this repo, `dashboard/app.py`, and set two secrets:
+`DATABASE_URL` and `AXIS_DASH_PASSWORD`.
+
+Free apps sleep after 12 hours without traffic and wake on the next visit — fine
+for a demo, wrong for a wall-mounted war-room screen. 1 GB RAM, unlimited public
+apps.
+
+---
+
+# Path B — Render Blueprint
 
 `render.yaml` in the repo root defines all three services. Render reads it and
 provisions managed Postgres, a background worker running the 2h cycle, and the
@@ -49,7 +106,7 @@ so there is no external schedule that can silently stop firing.
 
 ---
 
-# Path B — one VM
+# Path C — one VM
 
 Postgres, the pipeline and the dashboard as three containers on one Docker
 network. One `docker compose up`, one `docker compose logs`.
@@ -64,7 +121,7 @@ Postgres plus the Python workers.
 | **DigitalOcean, Bangalore (BLR1)** | 1 vCPU / 2 GB | **$12/mo** | India-hosted — worth saying out loud in a bank pitch |
 | DigitalOcean, any region | 1 vCPU / 2 GB | $12/mo | |
 | Hetzner CX22 (DE/FI/US) | 2 vCPU / 4 GB | **~€3.79/mo** | cheapest reliable option |
-| Oracle Cloud Always Free | 4 ARM / 24 GB | $0 | genuinely free, but provisioning is unreliable and idle instances get reclaimed — do not build a demo on it |
+| Oracle Cloud Always Free | 2 ARM / 12 GB | $0 | halved from 4/24 in June 2026; provisioning often fails with "out of host capacity" in busy regions — do not build a demo deadline on it |
 
 If the deadline matters more than €4, take Hetzner. If the audience is Axis, take
 Bangalore and say the data never leaves India.
