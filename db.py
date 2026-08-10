@@ -57,7 +57,15 @@ DDL = [
     """CREATE TABLE IF NOT EXISTS clean_posts (
         source_id TEXT PRIMARY KEY, clean_text TEXT, lang TEXT, text_hash TEXT,
         is_duplicate INTEGER, spam_flag INTEGER, pii_types TEXT, transformed_at TEXT)""",
+    # One row per post per refresh pass. Kept as history rather than overwriting so the
+    # 24h engagement CURVE survives — velocity (a post tripling in 2h) is the early
+    # warning; the final total alone tells you a crisis happened, not that it is starting.
+    """CREATE TABLE IF NOT EXISTS engagement_history (
+        source_id TEXT, iteration INTEGER, captured_at TEXT, likes BIGINT, reshares BIGINT,
+        comments BIGINT, views BIGINT, PRIMARY KEY (source_id, iteration))""",
 ]
+
+ENGAGEMENT_COLS = ["source_id", "iteration", "captured_at", "likes", "reshares", "comments", "views"]
 
 CLEAN_COLS = ["source_id", "clean_text", "lang", "text_hash", "is_duplicate", "spam_flag",
               "pii_types", "transformed_at"]
@@ -79,13 +87,17 @@ RAW_COLS = ["source_id", "source", "author", "author_name", "text", "url", "crea
 # columns added after the first release — auto-added to existing DBs by migrate()
 MIGRATIONS = {"raw_posts": {"author_name": "TEXT", "reply_count": "BIGINT", "retweet_count": "BIGINT",
                             "quote_count": "BIGINT", "view_count": "BIGINT", "bookmark_count": "BIGINT",
-                            "conversation_id": "TEXT"},
-              "analysis": {"text_masked": "TEXT", "pii_types": "TEXT"}}
+                            "conversation_id": "TEXT",
+                            # engagement refresh bookkeeping (see fetch/refresh.py)
+                            "refresh_count": "INTEGER", "last_refreshed_at": "TEXT"},
+              "analysis": {"text_masked": "TEXT", "pii_types": "TEXT",
+                           # operational triage taxonomy, derived (see analyze/categories.py)
+                           "issue_category": "TEXT", "category_reason": "TEXT"}}
 ANALYSIS_COLS = ["source_id", "sentiment", "score", "emotion", "emotion_intensity", "sarcasm", "intent",
                  "urgency", "urgency_reason", "product", "root_cause", "rbi_category", "recommended_team",
                  "recommended_action", "churn_risk", "fraud_signal", "fraud_type", "pii_present", "theme",
                  "summary", "confidence", "aspects_json", "cluster_id", "model", "analyzed_at",
-                 "text_masked", "pii_types"]
+                 "text_masked", "pii_types", "issue_category", "category_reason"]
 CLUSTER_COLS = ["cluster_id", "title", "size", "recent_share", "avg_score", "top_team", "sample_ids", "updated_at"]
 
 
@@ -337,6 +349,37 @@ def restore_tables(tables=GATED_TABLES):
 def drop_snapshots(tables=GATED_TABLES):
     for t in tables:
         execute(f'DROP TABLE IF EXISTS "{t}__bak"')
+
+
+def bump_refresh(rows):
+    """Apply one engagement-refresh pass. Metric columns use COALESCE so a source
+    that reports likes but not views cannot blank out a view count another pass
+    already captured — a partial response must never erase known data."""
+    if not rows:
+        return 0
+    with _engine.begin() as c:
+        c.execute(text("""UPDATE raw_posts SET
+                            refresh_count     = :refresh_count,
+                            last_refreshed_at = :last_refreshed_at,
+                            retweet_count     = COALESCE(:retweet_count, retweet_count),
+                            reply_count       = COALESCE(:reply_count, reply_count),
+                            view_count        = COALESCE(:view_count, view_count),
+                            engagement        = COALESCE(:engagement, engagement)
+                          WHERE source_id = :source_id"""), rows)
+    return len(rows)
+
+
+def set_categories(rows):
+    """Batch-assign issue_category. rows: [{source_id, issue_category, category_reason}].
+    One executemany in a single transaction — the corpus is thousands of rows and
+    a per-row commit turns a two-second job into a two-minute one."""
+    if not rows:
+        return 0
+    with _engine.begin() as c:
+        c.execute(text("""UPDATE analysis SET issue_category=:issue_category,
+                                              category_reason=:category_reason
+                          WHERE source_id=:source_id"""), rows)
+    return len(rows)
 
 
 def set_masked(source_id, text_masked, pii_types):

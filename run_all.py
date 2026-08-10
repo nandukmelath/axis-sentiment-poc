@@ -8,6 +8,7 @@ import sys, subprocess
 STEPS = [
     ["-m", "fetch.run_fetch"],
     ["-m", "analyze.run_analyze", "--limit", "60"],   # free-tier guard
+    ["-m", "analyze.run_categories"],                 # derived triage taxonomy, no tokens
     ["-m", "analyze.embed_cluster"],
     ["-m", "analyze.exec_summary"],
 ]
