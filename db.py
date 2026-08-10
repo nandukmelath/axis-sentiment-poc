@@ -200,9 +200,37 @@ def _upsert(table, rows, pk, cols, replace):
     return len(norm)
 
 
+def norm_dt(v):
+    """Any source date -> ISO8601 UTC string, or None.
+
+    Normalising on WRITE rather than only on read. parse_dt already rescues mixed
+    formats in pandas, but the raw string is what lands in the column, so every
+    SQL-level date expression — window filters, MAX(created_at), the date_key
+    derivation — sees RFC-822 text and compares it lexicographically. 366 rows
+    across news/technofino/gmaps/consumercomplaints/businessstandard were stored
+    as 'Mon, 29 Jun 2026 12:05:00 GMT', and 62 of them ended up with a NULL
+    date_key, invisible to every chart and to spike detection.
+    """
+    if v is None or v == "":
+        return None
+    ts = parse_dt(v)
+    if ts is None or (hasattr(ts, "__len__") and not len(ts)):
+        return None
+    try:
+        if pd.isna(ts):
+            return None
+    except (TypeError, ValueError):
+        return None
+    return ts.isoformat()
+
+
 def upsert_posts(rows):
     for r in rows:
         r.setdefault("fetched_at", now())
+        # One place, so a new fetcher cannot reintroduce the problem by passing
+        # whatever shape its upstream happened to emit.
+        if r.get("created_at") is not None:
+            r["created_at"] = norm_dt(r["created_at"]) or r["created_at"]
     return _upsert("raw_posts", rows, "source_id", RAW_COLS, replace=False)
 
 
@@ -349,6 +377,16 @@ def restore_tables(tables=GATED_TABLES):
 def drop_snapshots(tables=GATED_TABLES):
     for t in tables:
         execute(f'DROP TABLE IF EXISTS "{t}__bak"')
+
+
+def set_created_at(rows):
+    """Rewrite created_at in place (tools/fix_dates.py)."""
+    if not rows:
+        return 0
+    with _engine.begin() as c:
+        c.execute(text("UPDATE raw_posts SET created_at=:created_at WHERE source_id=:source_id"),
+                  rows)
+    return len(rows)
 
 
 def set_tweet_metrics(rows):

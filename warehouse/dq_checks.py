@@ -80,6 +80,27 @@ def run():
     fd = _n("SELECT COALESCE(SUM(mentions),0) n FROM fact_daily")
     chk("fact_daily reconciles to keyed facts", fd == dk, f"fact_daily={fd} vs date_key={dk}")
 
+    # Every stored date must be ISO. Sources emit RFC-822, and a raw string in this
+    # column makes every SQL date expression compare lexicographically — MAX() picks
+    # "Wed, 29 Jul" over "2026-08-10", and the date_key derivation yields NULL.
+    # db.norm_dt normalises on write; this catches a fetcher that bypasses it.
+    bad = _n("""SELECT COUNT(*) n FROM raw_posts
+                WHERE created_at IS NOT NULL AND created_at <> ''
+                  AND created_at NOT LIKE '20__-%'""")
+    chk("created_at is ISO8601 everywhere", bad == 0, f"{bad} non-ISO rows")
+
+    # Posts whose source published no date at all. They are legitimately excluded
+    # from every time series, but that exclusion must be VISIBLE — silently missing
+    # rows look identical to rows that were never fetched. Not a failure; the count
+    # is reported so a jump gets noticed.
+    undated = _n("SELECT COUNT(*) n FROM raw_posts WHERE created_at IS NULL OR created_at = ''")
+    total_posts = _n("SELECT COUNT(*) n FROM raw_posts")
+    share = (undated / total_posts * 100) if total_posts else 0
+    chk("undated posts stay under 5% of corpus", share < 5.0,
+        f"{undated}/{total_posts} ({share:.1f}%) have no source date — excluded from "
+        f"all time series. Backfilling them from fetched_at would stack them on one "
+        f"day and trip spike detection, so they are left out rather than guessed.")
+
     return checks
 
 
