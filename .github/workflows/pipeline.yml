@@ -1,26 +1,20 @@
 name: axis-pipeline
-# Cloud orchestration -- runs the full 2h cycle on a schedule, writing to Supabase
-# Postgres. Direct multi-provider LLM failover, no always-on router service needed.
+# Cloud orchestration -- replaces local Airflow. Runs the full harvest on a schedule,
+# writing to the Neon warehouse. LLM depth routes through freellmapi (Sealos) with a
+# direct multi-provider failover behind it (all keys are GitHub repo Secrets).
 #
 # Required GitHub Secrets (Settings -> Secrets and variables -> Actions):
-#   DATABASE_URL        postgresql+psycopg2://postgres.<ref>:<pw>@aws-0-<region>
-#                        .pooler.supabase.com:5432/postgres?sslmode=require
-#   GROQ_API_KEY         gsk_...        }
-#   CEREBRAS_API_KEY     csk-...        }  tried in order; each skipped if unset
-#   GEMINI_API_KEY       AIza...        }
-#   OPENROUTER_API_KEY   sk-or-...      }
+#   DATABASE_URL        postgresql+psycopg2://...neon.tech/...?sslmode=require
+#   FREELLM_API_KEY     freellmapi-...            (unified key on the Sealos instance)
+#   FREELLM_BASE_URL    https://<sealos-app>/v1   (e.g. https://llxegfifaxml.usw-1.sealos.app/v1)
+#   GROQ_API_KEY        gsk_...        }
+#   CEREBRAS_API_KEY    csk-...        }  direct fallbacks if freellmapi is unreachable
+#   GEMINI_API_KEY      AIza...        }
+#   OPENROUTER_API_KEY  sk-or-...      }
 
 on:
   schedule:
-    # Every 2h. This repo is PUBLIC, and GitHub-hosted standard runners are free and
-    # unmetered on public repos — the old 12h cadence was rationing a 2,000 min/month
-    # private-repo budget that does not apply. 2h is also the cadence the engagement
-    # refresh is designed around: 12 passes x 2h = 24h of coverage per post.
-    #
-    # Actions cron is best-effort and can fire 10-30 min late under load. That is fine
-    # here: fetch/refresh.py schedules on ELAPSED time, not on the run being punctual,
-    # so a late run self-corrects instead of skipping a post's slot.
-    - cron: '0 */2 * * *'
+    - cron: '0 */12 * * *'      # every 12h (private-repo Actions minutes stay under 2000/mo)
   workflow_dispatch: {}          # manual "Run workflow" button
 
 concurrency:
@@ -45,15 +39,6 @@ jobs:
       FETCH_MULT: '4'
       BEAM_RUNNER: DirectRunner
       PYTHONIOENCODING: utf-8
-      # Was silently off here — the three stealth-browser sources (trustpilot_web,
-      # gmaps_web, mouthshut_web; fetch/scrapling_stealth.py) defaulted to disabled
-      # and this workflow never set the flag, so they never ran in the cloud even
-      # though they work locally when the var is set by hand. A background 2h job
-      # has no reason for the dashboard RUN button's hang-risk guard to apply.
-      STEALTH_SOURCES: '1'
-      # X discovery: broaden the Nitter candidate pool for a run launched from a
-      # datacenter IP, which gets blocked harder than a home connection.
-      TWITTER_NITTER_INSTANCES: nitter.privacyredirect.com,nitter.perennialte.ch
     steps:
       - uses: actions/checkout@v4
 
@@ -65,27 +50,11 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      # Separate from the pip install above: requirements.txt only installs the
-      # playwright PYTHON package. The browser binary is a second download this
-      # step used to be missing entirely, which meant STEALTH_SOURCES=1 above
-      # would have crashed every stealth fetcher with "Executable doesn't exist"
-      # the moment it was turned on. --with-deps pulls the OS libraries Chromium
-      # needs that ubuntu-latest does not ship by default.
-      - name: Install Playwright browser (for stealth-browser sources)
-        run: python -m playwright install --with-deps chromium
-
-      - name: Ensure warehouse schema on Supabase
+      - name: Ensure warehouse schema on Neon
         run: python db.py
 
-      # One pass, not --loop: the cron IS the loop here. run_cycle does
-      # fetch -> engagement refresh -> analyse -> categorise.
-      - name: Cycle (fetch -> refresh -> analyse -> categorise)
-        run: python run_cycle.py
+      - name: Run full harvest (fetch -> classify -> warehouse -> marts)
+        run: python -m run_harvest
 
-      - name: Build warehouse (star + marts)
-        run: python -m warehouse.build
-
-      # Non-blocking: a DQ failure should surface without discarding a good harvest,
-      # since the build has already written to the live DB by this point.
       - name: Data-quality gate
         run: python -m warehouse.dq_checks

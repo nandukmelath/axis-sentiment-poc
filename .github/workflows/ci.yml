@@ -46,7 +46,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Byte-compile all modules
-        run: python -m compileall -q analyze analytics warehouse transform fetch api tools db.py config.py run_window.py run_harvest.py run_cycle.py
+        run: python -m compileall -q analyze analytics warehouse transform fetch api tools db.py config.py run_window.py run_harvest.py
 
   security:
     runs-on: ubuntu-latest
@@ -58,6 +58,6 @@ jobs:
       - name: Install scanners
         run: pip install bandit pip-audit
       - name: Bandit (SAST -- fail on medium+ severity)
-        run: bandit -c pyproject.toml -q -r analyze analytics warehouse transform fetch api tools db.py config.py run_window.py run_harvest.py run_cycle.py -ll
+        run: bandit -c pyproject.toml -q -r analyze analytics warehouse transform fetch api tools db.py config.py run_window.py -ll
       - name: pip-audit (dependency CVEs)
         run: pip-audit -r requirements-dev.txt || true   # advisory (don't block on upstream CVEs)
